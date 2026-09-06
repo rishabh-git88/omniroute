@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Builds
+.next/
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# Temporary
+tmp/
+temp/
+
+# Python
+__pycache__/
+.venv/
+venv/
+
+# IDE
+.vscode/
+
+# Obsidian local workspace UI state
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
