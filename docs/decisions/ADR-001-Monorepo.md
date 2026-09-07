@@ -2,7 +2,7 @@
 
 #decision #architecture
 
-- Status: Accepted
+- Status: Accepted; deployable layout superseded in part by [[ADR-004-FastAPI-Router-Service]]
 - Date: 2026-09-06
 - Source: `references/architecture-source.txt`, sections 4 and 10
 
@@ -12,7 +12,7 @@ The first release needs synchronized web/API contracts, multiple provider adapte
 
 ## Decision
 
-Use a TypeScript monorepo with deployable `apps/web`, `apps/api`, and `apps/worker`; packages for contracts, provider core/adapters, UI, observability, and typed configuration; and infrastructure/docs at the root. Implement the backend as a NestJS modular monolith with repository interfaces inside each module.
+Use a monorepo with deployable applications and explicit packages for contracts, provider boundaries, UI, observability, and typed configuration. Implement product business logic as a NestJS modular monolith with repository interfaces inside each module. [[ADR-004-FastAPI-Router-Service]] adds a Python/FastAPI orchestration service while retaining this monorepo and modular-monolith decision for product state.
 
 ## Consequences
 

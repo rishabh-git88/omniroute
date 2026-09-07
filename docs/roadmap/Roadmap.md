@@ -8,7 +8,7 @@ Reliable provider adapters → parallel streaming → response selection → act
 
 ## Foundation
 
-- Establish the monorepo, Next.js shell, NestJS API/worker boundaries, shared contracts/config, local PostgreSQL/Redis/object storage, Google login design, CI baseline, and architectural test seams.
+- Establish the monorepo, Next.js shell, NestJS API and FastAPI AI Router boundaries, shared contracts/config, local PostgreSQL/pgvector and Redis, CI baseline, and architectural test seams. Object storage enters with the file milestone.
 - Exit: an authenticated user can create and reopen a conversation using local infrastructure and fake providers.
 - Detailed documentation-only planning is in [[Current-Sprint]].
 

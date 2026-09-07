@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Isolate OpenAI, Anthropic, Gemini, and future provider SDK/API churn behind a canonical interface without flattening every capability to the lowest common denominator.
+Isolate OpenAI, Anthropic, Gemini, and future provider SDK/API churn behind canonical contracts inside the FastAPI AI Router service without flattening every capability to the lowest common denominator.
 
 ## Canonical contract
 
@@ -47,7 +47,7 @@ Input is a `CanonicalChatRequest` plus a versioned model target. Output is `Prov
 
 ## Dependencies and data used
 
-Provider SDKs/APIs, server-side credentials, [[Model-Registry]] snapshots, canonical contracts, and [[Observability]] correlation. Adapters do not own canonical history.
+Provider SDKs/APIs, server-side credentials, [[Model-Registry]] snapshots, cross-language canonical contracts, and [[Observability]] correlation. Adapters do not own canonical history or direct PostgreSQL repositories.
 
 ## Failure behavior
 
@@ -63,7 +63,7 @@ Contract-test adapters with recorded/fake streams. Version adapters and run sche
 
 ## Implementation notes
 
-Recheck recommended API surfaces, SDK versions, model identifiers, quotas, pricing, and retention immediately before implementation and launch.
+Future adapters belong below `services/ai-router`; no provider SDK is installed in Phase 1. Recheck recommended API surfaces, SDK versions, model identifiers, quotas, pricing, and retention immediately before adapter implementation and launch.
 
 ## Related notes
 

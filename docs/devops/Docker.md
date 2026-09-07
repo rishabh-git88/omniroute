@@ -8,8 +8,8 @@ Provide repeatable local dependencies and production container images for the AP
 
 ## Responsibilities
 
-- Docker Compose runs local PostgreSQL, Redis, and an S3-compatible object-store emulator; provider calls use mocks or developer-owned keys in secret storage.
-- Multi-stage builds create small API/worker runtime images.
+- Docker Compose runs local PostgreSQL with pgvector and ephemeral Redis. Object storage is added with the file milestone; provider calls use mocks or developer-owned keys in secret storage.
+- Multi-stage builds create non-root web, API, and AI Router runtime images.
 - Runtime containers use non-root users, health endpoints, immutable tags, and minimal base images.
 - Build context excludes secrets, local data, and unnecessary source artifacts.
 
@@ -35,7 +35,7 @@ Keep API and worker images/process roles separately scalable even if built from 
 
 ## Implementation notes
 
-Image definitions belong under `infra/docker/` when application scaffolding begins; this bootstrap creates documentation only.
+Image definitions live under `infrastructure/docker/`; local database initialization lives under `infrastructure/postgres/init/`. Application containers are opt-in through the Compose `application` profile.
 
 ## Related notes
 
@@ -43,5 +43,5 @@ Image definitions belong under `infra/docker/` when application scaffolding begi
 
 ## Open Questions
 
-- Which S3-compatible emulator and base images are preferred?
-- Will API and worker share one image with different commands or use separate optimized images?
+- Which S3-compatible emulator is added with the file milestone?
+- What retention and security policy should apply to build provenance and runtime images?

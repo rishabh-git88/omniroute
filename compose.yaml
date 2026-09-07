@@ -1,0 +1,127 @@
+name: omniroute
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-omniroute}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+      POSTGRES_USER: ${POSTGRES_USER:-omniroute}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:8.8-alpine
+    command: ['redis-server', '--appendonly', 'no', '--save', '']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    restart: unless-stopped
+
+  ai-router:
+    profiles: ['application']
+    build:
+      context: .
+      dockerfile: infrastructure/docker/ai-router.Dockerfile
+    environment:
+      AI_ROUTER_HOST: 0.0.0.0
+      AI_ROUTER_LOG_LEVEL: ${AI_ROUTER_LOG_LEVEL:-info}
+      AI_ROUTER_PORT: 8001
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - '${AI_ROUTER_PORT:-8001}:8001'
+    restart: unless-stopped
+
+  api:
+    profiles: ['application']
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.Dockerfile
+    depends_on:
+      ai-router:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      AI_ROUTER_URL: http://ai-router:8001
+      API_HOST: 0.0.0.0
+      API_PORT: 4000
+      CORS_ORIGIN: http://localhost:${WEB_PORT:-3000}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-omniroute}:${POSTGRES_PASSWORD:-change-me-local-only}@postgres:5432/${POSTGRES_DB:-omniroute}
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/v1/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - '${API_PORT:-4000}:4000'
+    restart: unless-stopped
+
+  web:
+    profiles: ['application']
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:4000/v1}
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      HOSTNAME: 0.0.0.0
+      NODE_ENV: production
+      PORT: 3000
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    ports:
+      - '${WEB_PORT:-3000}:3000'
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

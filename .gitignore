@@ -8,6 +8,8 @@ node_modules/
 
 # Builds
 .next/
+.turbo/
+*.tsbuildinfo
 dist/
 build/
 coverage/
@@ -24,8 +26,13 @@ temp/
 
 # Python
 __pycache__/
+*.py[cod]
 .venv/
 venv/
+.uv-cache/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # IDE
 .vscode/

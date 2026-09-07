@@ -10,6 +10,8 @@ Redis provides low-latency ephemeral coordination. It is never the sole store fo
 
 - Rate limits and concurrency caps.
 - Short-lived SSE replay/event retention and stream coordination.
+- Short-lived service and streaming-session coordination; durable authentication sessions remain in PostgreSQL.
+- Ephemeral provider health and circuit-breaker state; historical signals belong in telemetry.
 - Distributed locks only where database locking is not the correct invariant boundary.
 - Safe caches for registry snapshots, token estimates, or context snapshots.
 - BullMQ queues for summaries, file processing, analytics, and reconciliation.
@@ -37,7 +39,7 @@ Define eviction separately from queue durability, bound SSE retention, monitor m
 
 ## Implementation notes
 
-Local development uses Docker Compose; preview/staging/production use managed Redis. Cache keys include tenant scope and data version.
+Local development uses Docker Compose with persistence disabled because Redis is intentionally disposable. Preview/staging/production use managed Redis. Cache keys include tenant scope and data version.
 
 ## Related notes
 

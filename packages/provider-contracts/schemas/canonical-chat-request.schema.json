@@ -1,0 +1,42 @@
+{
+  "$id": "https://omniroute.local/schemas/canonical-chat-request.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "contextSnapshotId": { "format": "uuid", "type": "string" },
+    "maxOutputTokens": { "minimum": 1, "type": "integer" },
+    "messages": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "content": { "minLength": 1, "type": "string" },
+          "role": {
+            "enum": ["system", "user", "assistant"],
+            "type": "string"
+          }
+        },
+        "required": ["content", "role"],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "modelKey": { "minLength": 1, "type": "string" },
+    "provider": {
+      "enum": ["fake", "openai", "anthropic", "gemini"],
+      "type": "string"
+    },
+    "runId": { "format": "uuid", "type": "string" },
+    "temperature": { "maximum": 2, "minimum": 0, "type": "number" }
+  },
+  "required": [
+    "contextSnapshotId",
+    "maxOutputTokens",
+    "messages",
+    "modelKey",
+    "provider",
+    "runId"
+  ],
+  "title": "CanonicalChatRequest",
+  "type": "object"
+}

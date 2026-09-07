@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Coordinate Single AI and Compare 3 requests while keeping selection, eligibility, retries, costs, and provider APIs outside conversation business logic. In V1, users choose providers; deterministic capability-aware ranking may assist. ML-based Auto Pick is explicitly later.
+Provide a separate FastAPI/Pydantic orchestration boundary for Single AI and Compare 3 execution while keeping provider APIs outside NestJS conversation business logic. NestJS owns selection, context snapshots, durable run state, and credits. In V1, users choose providers; deterministic capability-aware ranking may assist. ML-based Auto Pick is explicitly later.
 
 ## Complete routing flow
 
@@ -45,12 +45,12 @@ flowchart TD
 - Create one request group and independent model runs, then fan out concurrently.
 - Request provider-neutral snapshots from [[Context-Memory]].
 - Invoke only [[Provider-Layer]], normalize results, and support independent cancel/retry.
-- Coordinate [[Credits-Billing]] reservation and settlement.
+- Accept only a run plan after NestJS has coordinated [[Credits-Billing]] reservation; return normalized usage and terminal events for NestJS settlement.
 - Emit evaluation metadata to [[Evaluation-Engine]] without treating selection as truth.
 
 ## Inputs and outputs
 
-Inputs: canonical request, desired mode/providers, task/file metadata, user policy, quota, registry snapshots, and context. Outputs: run plans, normalized stream events, terminal states, usage, and routing/evaluation metadata.
+Inputs: an authorized canonical request, desired mode/providers, task/file metadata, policy result, registry snapshot, and immutable context snapshot. Outputs: normalized stream events, terminal results, usage, and routing/evaluation metadata. The router does not own browser sessions or mutate canonical conversation/credit tables.
 
 ## Failure behavior
 
@@ -62,11 +62,11 @@ Validate file access, provider disclosure consent, tool permissions, budget, and
 
 ## Scalability considerations
 
-Bound concurrency and output tokens. Use [[Redis]] for short-lived coordination and backpressure, with durable terminal state in PostgreSQL. Do not introduce an ML router before controlled evaluation evidence exists.
+Bound concurrency and output tokens. Use [[Redis]] for short-lived coordination, provider health, and backpressure. NestJS persists durable terminal state in PostgreSQL. Do not introduce an ML router before controlled evaluation evidence exists.
 
 ## Implementation notes
 
-Routing decisions should record registry/pricing versions and reasons. The router chooses or validates targets; the provider layer translates and executes.
+The implementation lives under `services/ai-router`. Cross-language request/event shapes originate under `packages/provider-contracts`. Routing decisions should record registry/pricing versions and reasons. The router chooses or validates targets; the provider layer translates and executes. See [[ADR-004-FastAPI-Router-Service]].
 
 ## Related notes
 

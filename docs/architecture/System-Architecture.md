@@ -8,34 +8,33 @@ OmniRoute starts as a modular monolith with independently testable provider adap
 
 ```mermaid
 flowchart TB
-    U[Browser] -->|REST commands| WEB[Next.js Web App]
-    WEB -->|REST and SSE| API[NestJS API / Fastify]
+    U[Browser] -->|REST commands and SSE| WEB[Next.js Web App]
+    WEB -->|HTTPS and SSE| API[NestJS API / Fastify]
     API --> ID[Identity]
-    API --> CONV[Conversation Module]
-    API --> CTX[Context Module]
-    API --> ROUTER[AI Router / Provider Orchestrator]
+    API --> CONV[Conversations]
+    API --> CTX[Context]
     API --> USAGE[Usage and Credits]
-    API --> FILES[Files and Artifacts]
+    ID --> PG[(PostgreSQL + pgvector)]
+    CONV --> PG
+    CTX --> PG
+    USAGE --> PG
+    API -->|Canonical run plan| ROUTER[FastAPI AI Router]
+    ROUTER -->|Normalized events| API
+    API --> REDIS[(Redis)]
+    ROUTER --> REDIS
+    ROUTER --> REGISTRY[Model Registry Snapshot]
     ROUTER --> OPENAI[OpenAI Adapter]
     ROUTER --> ANTHROPIC[Anthropic Adapter]
     ROUTER --> GEMINI[Gemini Adapter]
-    CONV --> PG[(PostgreSQL)]
-    CTX --> PG
-    USAGE --> PG
-    API --> REDIS[(Redis / BullMQ)]
-    FILES --> OBJ[(Object Storage)]
     API --> OTEL[Telemetry]
-    WORKER[Background Worker] --> REDIS
-    WORKER --> PG
-    WORKER --> OBJ
-    WORKER --> OTEL
+    ROUTER --> OTEL
 ```
 
 ## Responsibilities
 
 - [[Frontend]] owns the consistent user experience and presentation state.
-- [[Backend]] owns identity, conversations, context, providers, usage, files, policy, analytics, and streaming module boundaries.
-- [[AI-Router]] orchestrates comparisons and eligibility; [[Provider-Layer]] alone imports provider SDKs.
+- [[Backend]] owns identity, conversations, context, usage, files, policy, analytics, durable run state, and client-facing streaming boundaries.
+- [[AI-Router]] is a separate FastAPI service that orchestrates comparisons and eligibility; [[Provider-Layer]] alone imports provider SDKs.
 - [[Context-Memory]] owns provider-neutral branch resolution and context packages.
 - [[PostgreSQL-Schema]] owns durable history and money-like invariants.
 - [[Redis]] accelerates ephemeral coordination but never becomes the only copy of a selected branch or credit transaction.
@@ -55,11 +54,11 @@ Enforce workspace authorization at every boundary, keep secrets server-side, use
 
 ## Scalability considerations
 
-Scale the web, API, and worker deployables independently first. Extract services only from measured bottlenecks. Kubernetes, Kafka, a service mesh, and multi-region active-active are deferred.
+Scale the web, API, and AI Router deployables independently. Additional extraction still requires measured need. Kubernetes, Kafka, a service mesh, and multi-region active-active are deferred.
 
 ## Implementation notes
 
-The target stack is TypeScript, Next.js 16/React 19, NestJS 11/Fastify on Node.js 24 LTS, Prisma plus explicit SQL, PostgreSQL 18, Redis/BullMQ, and S3-compatible storage. Re-verify versions before implementation.
+The Phase 1 stack is Next.js 16/React 19 and NestJS 12/Fastify on Node.js 24 LTS, plus FastAPI/Pydantic on Python 3.12 or newer. PostgreSQL 18 with pgvector is durable storage and Redis 8 is ephemeral coordination. Provider SDKs and product persistence are intentionally not implemented in Phase 1. See [[ADR-004-FastAPI-Router-Service]].
 
 ## Related notes
 
@@ -68,4 +67,4 @@ The target stack is TypeScript, Next.js 16/React 19, NestJS 11/Fastify on Node.j
 ## Open Questions
 
 - Which managed API/worker host and which managed data vendors will be used for MVP?
-- Is the worker deployed from day one or initially run as a separate process from the same backend codebase?
+- When do background jobs justify adding the deferred worker deployable?

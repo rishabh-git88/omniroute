@@ -42,7 +42,7 @@ OmniRoute is a cross-model conversation workspace whose promise is: **your conve
 ## Roadmap and decisions
 
 - [[Roadmap]] and [[Current-Sprint]]
-- [[ADR-001-Monorepo]], [[ADR-002-PostgreSQL]], and [[ADR-003-AI-Router]]
+- [[ADR-001-Monorepo]], [[ADR-002-PostgreSQL]], [[ADR-003-AI-Router]], and [[ADR-004-FastAPI-Router-Service]]
 
 ## Knowledge graph
 

@@ -4,24 +4,24 @@
 
 ## Purpose
 
-PostgreSQL 18 is the primary system of record for identity, workspaces, conversation branches, context provenance, file metadata, provider configuration, usage, and credits. Confirm the stable version before implementation.
+PostgreSQL 18 is the primary system of record for identity, workspaces, conversation branches, context provenance, file metadata, provider configuration, usage, and credits. Local Phase 1 infrastructure enables pgvector, but semantic retrieval remains deferred until justified.
 
 ## Core entities
 
-| Entity | Key fields | Purpose |
-|---|---|---|
-| `users` | `id`, `email`, `name`, `status`, `created_at` | account lifecycle |
-| `workspaces` | `id`, `owner_id`, `plan`, `retention_policy` | tenant and policy boundary |
-| `conversations` | `id`, `workspace_id`, `title`, `active_head_id`, `mode` | chat and active branch pointer |
-| `turns` | `id`, `conversation_id`, `parent_response_id`, `user_content`, `created_at` | user input anchored to prior selection |
-| `model_runs` | `id`, `turn_id`, `provider`, `model_key`, `status`, `request_group_id` | external request lifecycle |
-| `model_responses` | `id`, `run_id`, `content`, `selected_at`, `finish_reason` | persistent candidate |
-| `context_snapshots` | `id`, `run_id`, `summary_version`, `source_ids`, `token_estimate` | handoff provenance |
-| `files` | `id`, `workspace_id`, `object_key`, `mime`, `size`, `scan_status` | object metadata and access boundary |
-| `artifacts` | `id`, `conversation_id`, `type`, `object_key`, `source_run_id` | reusable generated output |
-| `usage_events` | `id`, `run_id`, `provider_usage`, `price_snapshot`, `actual_cost` | immutable metering |
-| `credit_transactions` | `id`, `user_id`, `request_group_id`, `amount`, `type`, `status` | grants/reserves/charges/releases/refunds |
-| `provider_registry` | `provider`, `model_key`, `capabilities`, `pricing_version`, `enabled` | versioned model configuration |
+| Entity                | Key fields                                                                  | Purpose                                  |
+| --------------------- | --------------------------------------------------------------------------- | ---------------------------------------- |
+| `users`               | `id`, `email`, `name`, `status`, `created_at`                               | account lifecycle                        |
+| `workspaces`          | `id`, `owner_id`, `plan`, `retention_policy`                                | tenant and policy boundary               |
+| `conversations`       | `id`, `workspace_id`, `title`, `active_head_id`, `mode`                     | chat and active branch pointer           |
+| `turns`               | `id`, `conversation_id`, `parent_response_id`, `user_content`, `created_at` | user input anchored to prior selection   |
+| `model_runs`          | `id`, `turn_id`, `provider`, `model_key`, `status`, `request_group_id`      | external request lifecycle               |
+| `model_responses`     | `id`, `run_id`, `content`, `selected_at`, `finish_reason`                   | persistent candidate                     |
+| `context_snapshots`   | `id`, `run_id`, `summary_version`, `source_ids`, `token_estimate`           | handoff provenance                       |
+| `files`               | `id`, `workspace_id`, `object_key`, `mime`, `size`, `scan_status`           | object metadata and access boundary      |
+| `artifacts`           | `id`, `conversation_id`, `type`, `object_key`, `source_run_id`              | reusable generated output                |
+| `usage_events`        | `id`, `run_id`, `provider_usage`, `price_snapshot`, `actual_cost`           | immutable metering                       |
+| `credit_transactions` | `id`, `user_id`, `request_group_id`, `amount`, `type`, `status`             | grants/reserves/charges/releases/refunds |
+| `provider_registry`   | `provider`, `model_key`, `capabilities`, `pricing_version`, `enabled`       | versioned model configuration            |
 
 The source also requires a transactionally locked `credit_wallets` projection; its complete columns remain to be designed.
 

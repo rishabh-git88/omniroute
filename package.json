@@ -1,0 +1,31 @@
+{
+  "name": "omniroute",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=22.12.0 <27"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "format": "prettier --write . && uv --cache-dir .uv-cache run --project services/ai-router ruff format services/ai-router/app services/ai-router/tests",
+    "format:check": "prettier --check . && uv --cache-dir .uv-cache run --project services/ai-router ruff format --check services/ai-router/app services/ai-router/tests",
+    "infra:down": "docker compose down",
+    "infra:logs": "docker compose logs -f postgres redis",
+    "infra:up": "docker compose up -d postgres redis",
+    "lint": "turbo run lint && pnpm format:check",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "^24.0.0",
+    "eslint": "9.39.5",
+    "globals": "17.12.0",
+    "prettier": "3.9.6",
+    "turbo": "2.10.12",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.69.0"
+  }
+}

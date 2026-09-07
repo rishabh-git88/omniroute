@@ -1,0 +1,13 @@
+.next
+.turbo
+.venv
+.obsidian
+AGENTS.md
+CODEX_BOOTSTRAP.md
+coverage
+dist
+docs
+node_modules
+next-env.d.ts
+pnpm-lock.yaml
+references
