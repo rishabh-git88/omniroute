@@ -8,6 +8,10 @@
   },
   "scripts": {
     "build": "turbo run build",
+    "db:generate": "pnpm --filter @omniroute/api db:generate",
+    "db:migrate": "pnpm --filter @omniroute/api db:migrate",
+    "db:seed": "pnpm --filter @omniroute/api db:seed",
+    "db:test": "pnpm --filter @omniroute/api test:database",
     "dev": "turbo run dev",
     "format": "prettier --write . && uv --cache-dir .uv-cache run --project services/ai-router ruff format services/ai-router/app services/ai-router/tests",
     "format:check": "prettier --check . && uv --cache-dir .uv-cache run --project services/ai-router ruff format --check services/ai-router/app services/ai-router/tests",

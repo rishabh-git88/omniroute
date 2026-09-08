@@ -21,6 +21,22 @@ Make each response timely, complete, attributable, economically reconciled, and 
 
 Correlate user turn, request group, model run, provider request, context snapshot, usage event, and ledger entry. Use OpenTelemetry, structured logs, metrics, and error tracking; never put secrets or raw content in routine telemetry.
 
+## MVP implementation
+
+The NestJS API assigns or accepts a validated `X-Request-Id`, returns it on
+every response, and emits Fastify/Pino JSON logs with cookie and authorization
+headers redacted. It creates basic HTTP spans through the OpenTelemetry Node
+SDK before application modules load; standard `OTEL_*` exporter settings select
+the collector, so no telemetry vendor is coupled to domain code.
+
+The `omniroute.api` meter records `omniroute.provider.latency`,
+`omniroute.provider.errors`, `omniroute.routing.decisions`, and credit
+reservation, settlement, and release counters. Attributes are restricted to
+provider, versioned model key, routing strategy, outcome, and bounded reason;
+they deliberately exclude users, request IDs, prompts, responses, and secrets.
+Telemetry export is best effort and does not participate in business
+transactions.
+
 ## Early service objectives
 
 - Platform API availability excluding providers: 99.9% monthly.

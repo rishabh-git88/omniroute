@@ -4,27 +4,43 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate --config prisma-generate.config.ts && nest build",
+    "db:generate": "prisma generate --config prisma-generate.config.ts",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:seed": "prisma db seed",
     "dev": "nest start --watch",
-    "lint": "eslint src --config ../../eslint.config.mjs",
+    "lint": "eslint src --ignore-pattern 'generated/**' --config ../../eslint.config.mjs",
     "start": "node dist/main.js",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "test": "prisma generate --config prisma-generate.config.ts && vitest run --exclude 'src/**/*.integration.test.ts'",
+    "test:database": "prisma migrate deploy --config prisma-test.config.ts && prisma generate --config prisma-test.config.ts && vitest run src/database/core-domain.integration.test.ts src/identity/auth.integration.test.ts src/conversations/conversation.integration.test.ts --no-file-parallelism",
+    "typecheck": "prisma generate --config prisma-generate.config.ts && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/cookie": "11.1.2",
     "@nestjs/common": "12.0.1",
     "@nestjs/core": "12.0.1",
     "@nestjs/platform-fastify": "12.0.1",
     "@omniroute/config": "workspace:*",
     "@omniroute/provider-contracts": "workspace:*",
     "@omniroute/types": "workspace:*",
-    "fastify": "^5.6.0",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/sdk-node": "0.222.0",
+    "@prisma/adapter-pg": "7.10.0",
+    "@prisma/client": "7.10.0",
+    "dotenv": "17.4.2",
+    "fastify": "5.12.1",
+    "jose": "6.2.12",
+    "pg": "8.16.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
     "@nestjs/cli": "12.0.0",
     "@nestjs/testing": "12.0.1",
+    "@types/pg": "8.15.5",
+    "prisma": "7.10.0",
+    "tsx": "4.20.5",
     "vitest": "5.0.0"
   }
 }

@@ -47,6 +47,17 @@ Avoid retaining complete streams in global client state. Paginate history, virtu
 
 Use tabs or a carousel on mobile, with an optional desktop split view. Selection may occur after the first completion and does not wait for the slowest run.
 
+The MVP supplies an authenticated sidebar, chat route, model selector, message
+composer, stream decoder, stop control, and regenerate control. It renders
+only API representations of canonical turns/responses and model-registry or
+routing-decision metadata—never provider SDK data or credentials. Terminal
+SSE handling refreshes PostgreSQL-backed conversation state.
+
+Each completed response exposes a one-click “Try another AI” action and a
+“Continue with this answer” selection action. Provider and model labels remain
+visible on every candidate. Selecting a response highlights it as the preferred
+continuation without removing its alternatives.
+
 ## Related notes
 
 [[User-Flows]] · [[Backend]] · [[Security]] · [[Testing]] · [[Deployment]]

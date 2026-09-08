@@ -56,6 +56,14 @@ Keep secrets in platform/cloud managers, isolate networks, encrypt transport/sto
 
 Scale API and workers independently. Add replicas, partitioning, regions, or orchestration only from measured latency, traffic, compliance, or operational needs.
 
+Kubernetes is not an MVP deployment dependency. Reconsider a managed container
+orchestration layer only after measured replica-management, rollout, isolation,
+or multi-region requirements exceed a managed-container platform's operating
+envelope. Kafka is likewise deferred unless measured durable event throughput,
+independent consumer replay, or cross-domain fan-out cannot be satisfied by
+PostgreSQL plus the existing ephemeral coordination path; adopting either
+requires a new ADR.
+
 ## Related notes
 
 [[System-Architecture]] · [[Docker]] · [[Observability]] · [[Security]] · [[Roadmap]]

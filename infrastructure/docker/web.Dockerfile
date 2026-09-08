@@ -40,4 +40,6 @@ COPY --from=build --chown=omniroute:omniroute /workspace/apps/web/.next/static .
 
 USER omniroute
 EXPOSE 3000
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+  CMD node -e "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "apps/web/server.js"]

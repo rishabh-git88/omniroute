@@ -21,6 +21,17 @@ pnpm dev
 
 The example configuration contains local-only placeholders, never production credentials. Keep `.env` untracked.
 
+Google sign-in additionally requires a Web OAuth client. Add its client ID and
+secret to `.env`, generate `AUTH_SESSION_SECRET` with
+`openssl rand -base64 48`, and register this redirect URI in Google Cloud:
+
+```text
+http://localhost:4000/v1/auth/google/callback
+```
+
+Then open `http://localhost:3000/login`. OAuth credentials and the session secret
+are consumed only by NestJS and are never included in the browser bundle.
+
 ## Commands
 
 ```bash
@@ -31,6 +42,27 @@ pnpm test
 pnpm typecheck
 pnpm infra:up
 pnpm infra:down
+pnpm db:generate
+pnpm db:migrate
+pnpm db:seed
+pnpm db:test
 ```
 
 The web app listens on port 3000, the NestJS API on port 4000, and the FastAPI router on port 8001 by default.
+git commit -m "feat: establish OmniRoute monorepo foundation"
+
+## Database workflow
+
+PostgreSQL is the durable source of truth. The initial migration enables
+pgvector, creates the core domain schema, and installs database-level branch,
+tenant, registry, and credit-ledger invariants. After `pnpm infra:up`, run:
+
+```bash
+pnpm db:migrate
+pnpm db:seed
+```
+
+Database integration tests are destructive and therefore require the dedicated
+`DATABASE_TEST_URL` from `.env.example`. `pnpm db:test` migrates that database
+before running the suite. Never point `DATABASE_TEST_URL` at a development or
+production database.

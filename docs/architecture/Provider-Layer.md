@@ -45,6 +45,10 @@ The adapter translates Interactions requests/events and reports capability diffe
 
 Input is a `CanonicalChatRequest` plus a versioned model target. Output is `ProviderEvent` values and a terminal normalized usage/error result.
 
+`CanonicalChatRequest.context` is the provider-neutral `ContextBundle` created
+by the main application. Adapters translate only its canonical messages; they
+do not query files, memories, embeddings, or PostgreSQL.
+
 ## Dependencies and data used
 
 Provider SDKs/APIs, server-side credentials, [[Model-Registry]] snapshots, cross-language canonical contracts, and [[Observability]] correlation. Adapters do not own canonical history or direct PostgreSQL repositories.
@@ -63,7 +67,20 @@ Contract-test adapters with recorded/fake streams. Version adapters and run sche
 
 ## Implementation notes
 
-Future adapters belong below `services/ai-router`; no provider SDK is installed in Phase 1. Recheck recommended API surfaces, SDK versions, model identifiers, quotas, pricing, and retention immediately before adapter implementation and launch.
+The MVP implementation lives in `services/ai-router/app/providers`. It exposes
+one canonical `generate`, `stream`, `capabilities`, `usage`, `health`, and
+`cancel` contract. OpenAI Responses, Anthropic Messages, and Gemini
+Interactions wire shapes stay in their respective adapters and are translated
+to normalized events before leaving this package. Adapter model identifiers,
+capabilities, and pricing versions arrive in the immutable Model Registry
+snapshot supplied with the run plan; adapters contain no pricing or model
+capability table.
+
+Each real adapter is disabled by default. Local development enables it only
+with `AI_ROUTER_ENABLE_OPENAI`, `AI_ROUTER_ENABLE_ANTHROPIC`, or
+`AI_ROUTER_ENABLE_GEMINI` plus the corresponding server-only environment key.
+The router never logs, serializes, or returns a credential. Mock transport
+contract tests cover normalization without a provider account or network call.
 
 ## Related notes
 

@@ -9,6 +9,14 @@ describe('health', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    Object.assign(process.env, {
+      API_PUBLIC_URL: 'http://localhost:4000',
+      AUTH_SESSION_SECRET: 'health-test-session-secret-32-characters',
+      GOOGLE_CLIENT_ID: 'health-test-google-client',
+      GOOGLE_CLIENT_SECRET: 'health-test-google-secret',
+      NODE_ENV: 'test',
+      WEB_APP_URL: 'http://localhost:3000',
+    });
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();

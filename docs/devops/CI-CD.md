@@ -25,6 +25,21 @@ flowchart LR
     M -->|regression| N[Rollback application safely]
 ```
 
+## Implemented CI gates
+
+`.github/workflows/ci.yml` runs independent GitHub Actions jobs for linting
+(including Python formatting), TypeScript/Python type checks, frontend tests,
+backend unit tests, AI Router tests, and PostgreSQL-backed migration and
+integration tests. The final build job depends on all gates, validates the
+Compose configuration, builds every deployable, and validates all production
+Dockerfiles.
+
+The integration job applies Prisma migrations to an isolated `omniroute_test`
+PostgreSQL service, verifies migration status, then executes integration tests.
+Production deployment is intentionally not encoded until a container registry,
+hosting provider, deployment credentials, approval environment, and rollback
+owner are selected.
+
 ## Responsibilities
 
 - Pin toolchains and dependencies; cache without bypassing correctness.

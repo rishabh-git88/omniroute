@@ -41,6 +41,13 @@ services:
       AI_ROUTER_HOST: 0.0.0.0
       AI_ROUTER_LOG_LEVEL: ${AI_ROUTER_LOG_LEVEL:-info}
       AI_ROUTER_PORT: 8001
+      AI_ROUTER_ENABLE_OPENAI: ${AI_ROUTER_ENABLE_OPENAI:-false}
+      AI_ROUTER_ENABLE_ANTHROPIC: ${AI_ROUTER_ENABLE_ANTHROPIC:-false}
+      AI_ROUTER_ENABLE_GEMINI: ${AI_ROUTER_ENABLE_GEMINI:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    init: true
     healthcheck:
       test:
         [
@@ -71,12 +78,25 @@ services:
         condition: service_healthy
     environment:
       AI_ROUTER_URL: http://ai-router:8001
+      API_PUBLIC_URL: http://localhost:${API_PORT:-4000}
       API_HOST: 0.0.0.0
       API_PORT: 4000
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      AUTH_SESSION_ROTATION_MINUTES: ${AUTH_SESSION_ROTATION_MINUTES:-15}
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET:-}
+      AUTH_SESSION_TTL_HOURS: ${AUTH_SESSION_TTL_HOURS:-24}
       CORS_ORIGIN: http://localhost:${WEB_PORT:-3000}
       DATABASE_URL: postgresql://${POSTGRES_USER:-omniroute}:${POSTGRES_PASSWORD:-change-me-local-only}@postgres:5432/${POSTGRES_DB:-omniroute}
-      NODE_ENV: production
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      NODE_ENV: development
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-omniroute-api}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       REDIS_URL: redis://redis:6379
+      WEB_APP_URL: http://localhost:${WEB_PORT:-3000}
+    init: true
     healthcheck:
       test:
         [
@@ -107,6 +127,7 @@ services:
       HOSTNAME: 0.0.0.0
       NODE_ENV: production
       PORT: 3000
+    init: true
     healthcheck:
       test:
         [

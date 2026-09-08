@@ -37,6 +37,20 @@ Keep API and worker images/process roles separately scalable even if built from 
 
 Image definitions live under `infrastructure/docker/`; local database initialization lives under `infrastructure/postgres/init/`. Application containers are opt-in through the Compose `application` profile.
 
+The PostgreSQL init scripts enable pgvector and create a dedicated
+`omniroute_test` database on a fresh volume. Prisma migrations remain the owner
+of application tables and also enable pgvector idempotently, so existing
+databases do not depend on init-script replay. Run `pnpm db:migrate` and
+`pnpm db:seed` for local development. Database integration tests require
+`DATABASE_TEST_URL`; `pnpm db:test` migrates that database before testing.
+
+All three runtime images are multi-stage, run as the unprivileged `omniroute`
+user, and contain image-level readiness health checks. `.dockerignore` keeps
+local secrets, build output, dependency directories, and local database data
+out of the image context. `compose.yaml` remains the local development
+environment: dependencies start by default; `--profile application` adds the
+API, AI Router, and web images.
+
 ## Related notes
 
 [[ADR-001-Monorepo]] · [[Security]] · [[Testing]]

@@ -36,7 +36,13 @@ Start with exact search at low volume; add pgvector approximate indexes only aft
 
 ## Implementation notes
 
-Semantic retrieval is justified by a quality/latency evaluation, not enabled merely because pgvector is available.
+The MVP enables bounded workspace-file retrieval through pgvector. Text files
+are chunked at roughly 1,200 characters with overlap, embedded by the local
+development embedding adapter, and ranked with cosine distance after workspace
+and soft-delete filters. A partial HNSW index applies only to the fixed
+64-dimensional MVP vectors; lexical GIN indexing supports future hybrid
+retrieval. The Context Builder decides whether the top three chunks fit the
+context budget.
 
 ## Related notes
 

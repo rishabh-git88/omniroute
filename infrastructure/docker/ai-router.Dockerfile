@@ -25,4 +25,6 @@ COPY --chown=omniroute:omniroute services/ai-router/app ./app
 
 USER omniroute
 EXPOSE 8001
-CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/ready', timeout=2)"
+CMD ["sh", "-c", "exec python -m uvicorn app.main:app --host \"$AI_ROUTER_HOST\" --port \"$AI_ROUTER_PORT\""]

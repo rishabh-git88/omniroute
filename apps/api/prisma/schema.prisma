@@ -1,0 +1,729 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETION_REQUESTED
+  DELETED
+}
+
+enum WorkspacePlan {
+  FREE
+  PRO
+}
+
+enum ConversationMode {
+  SINGLE
+  COMPARE
+}
+
+enum RequestGroupStatus {
+  PENDING
+  RESERVED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum ModelRunStatus {
+  PENDING
+  RESERVED
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum RoutingStrategy {
+  USER_SELECTED
+  COMPARE
+  AUTO
+  FALLBACK
+}
+
+enum RegistryRolloutState {
+  DISABLED
+  INTERNAL
+  BETA
+  GENERAL
+}
+
+enum FileScanStatus {
+  PENDING
+  CLEAN
+  REJECTED
+  ERROR
+}
+
+enum FileProcessingStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum MemoryKind {
+  PINNED_FACT
+  WORKSPACE_RULE
+  CONVERSATION_SUMMARY
+}
+
+enum MemorySourceKind {
+  USER_AUTHORED
+  TURN
+  RESPONSE
+  FILE
+  ARTIFACT
+}
+
+enum EmbeddingSourceKind {
+  TURN
+  RESPONSE
+  FILE_CHUNK
+  MEMORY
+  ARTIFACT
+}
+
+enum UsageEventKind {
+  PARTIAL
+  FINAL
+  CORRECTION
+}
+
+enum CreditReservationStatus {
+  PENDING
+  SETTLED
+  RELEASED
+}
+
+enum CreditTransactionType {
+  GRANT
+  RESERVATION
+  CHARGE
+  RELEASE
+  REFUND
+  ADJUSTMENT
+}
+
+enum CreditTransactionStatus {
+  PENDING
+  COMPLETED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+enum EntitlementValueType {
+  BOOLEAN
+  INTEGER
+  TEXT
+}
+
+enum FeedbackKind {
+  THUMBS_UP
+  THUMBS_DOWN
+  REPORT
+  SWITCH_COHERENCE
+}
+
+model User {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email              String              @unique
+  name               String?
+  status             UserStatus          @default(ACTIVE)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt          DateTime?           @map("deleted_at") @db.Timestamptz(6)
+  accounts           Account[]
+  sessions           Session[]
+  workspaces         Workspace[]
+  subscriptions      Subscription[]
+  requestGroups      RequestGroup[]
+  memories           Memory[]
+  wallet             CreditWallet?
+  creditTransactions CreditTransaction[]
+  feedback           Feedback[]
+  auditEvents        AuditEvent[]        @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Account {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  identityProvider  String    @map("identity_provider")
+  providerAccountId String    @map("provider_account_id")
+  emailAtProvider   String?   @map("email_at_provider")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt       DateTime? @map("last_login_at") @db.Timestamptz(6)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([identityProvider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  sessionTokenHash String    @unique @map("session_token_hash")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  lastSeenAt       DateTime? @map("last_seen_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("sessions")
+}
+
+model Workspace {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerId         String          @map("owner_id") @db.Uuid
+  name            String
+  plan            WorkspacePlan   @default(FREE)
+  retentionPolicy String          @default("standard") @map("retention_policy")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt       DateTime?       @map("deleted_at") @db.Timestamptz(6)
+  owner           User            @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  conversations   Conversation[]
+  requestGroups   RequestGroup[]
+  files           WorkspaceFile[]
+  memories        Memory[]
+  entitlements    Entitlement[]
+  feedback        Feedback[]
+  auditEvents     AuditEvent[]
+  embeddings      Embedding[]
+
+  @@index([ownerId, createdAt])
+  @@map("workspaces")
+}
+
+model Subscription {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                 String             @map("user_id") @db.Uuid
+  billingProvider        String             @map("billing_provider")
+  externalSubscriptionId String             @map("external_subscription_id")
+  planKey                String             @map("plan_key")
+  status                 SubscriptionStatus
+  currentPeriodStart     DateTime?          @map("current_period_start") @db.Timestamptz(6)
+  currentPeriodEnd       DateTime?          @map("current_period_end") @db.Timestamptz(6)
+  cancelAtPeriodEnd      Boolean            @default(false) @map("cancel_at_period_end")
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                   User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  entitlements           Entitlement[]
+
+  @@unique([billingProvider, externalSubscriptionId])
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+model Entitlement {
+  id             String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String               @map("workspace_id") @db.Uuid
+  subscriptionId String?              @map("subscription_id") @db.Uuid
+  key            String
+  valueType      EntitlementValueType @map("value_type")
+  booleanValue   Boolean?             @map("boolean_value")
+  integerValue   BigInt?              @map("integer_value")
+  textValue      String?              @map("text_value")
+  startsAt       DateTime             @default(now()) @map("starts_at") @db.Timestamptz(6)
+  endsAt         DateTime?            @map("ends_at") @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  workspace      Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  subscription   Subscription?        @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@unique([workspaceId, key, startsAt])
+  @@index([workspaceId, key, endsAt])
+  @@map("entitlements")
+}
+
+model Provider {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key             String                  @unique
+  displayName     String                  @map("display_name")
+  enabled         Boolean                 @default(false)
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  models          Model[]
+  registryEntries ProviderRegistryEntry[]
+  modelRuns       ModelRun[]
+
+  @@map("providers")
+}
+
+model Model {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerId      String                  @map("provider_id") @db.Uuid
+  modelKey        String                  @unique @map("model_key")
+  providerModelId String                  @map("provider_model_id")
+  displayName     String                  @map("display_name")
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  provider        Provider                @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  registryEntries ProviderRegistryEntry[]
+  modelRuns       ModelRun[]
+
+  @@unique([providerId, providerModelId])
+  @@map("models")
+}
+
+model ProviderRegistryEntry {
+  id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  providerId        String                 @map("provider_id") @db.Uuid
+  modelId           String                 @map("model_id") @db.Uuid
+  registryVersion   Int                    @map("registry_version")
+  capabilities      Json                   @db.JsonB
+  pricing           Json                   @db.JsonB
+  pricingVersion    String                 @map("pricing_version")
+  rolloutState      RegistryRolloutState   @default(DISABLED) @map("rollout_state")
+  enabled           Boolean                @default(false)
+  regionConstraints String[]               @default([]) @map("region_constraints")
+  effectiveAt       DateTime               @map("effective_at") @db.Timestamptz(6)
+  retiredAt         DateTime?              @map("retired_at") @db.Timestamptz(6)
+  createdAt         DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  provider          Provider               @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  model             Model                  @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  modelRuns         ModelRun[]
+  routingCandidates RoutingDecisionModel[]
+
+  @@unique([modelId, registryVersion])
+  @@index([providerId, enabled, rolloutState])
+  @@map("provider_registry")
+}
+
+model Conversation {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId   String           @map("workspace_id") @db.Uuid
+  title         String
+  activeHeadId  String?          @unique @map("active_head_id") @db.Uuid
+  mode          ConversationMode @default(SINGLE)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?        @map("deleted_at") @db.Timestamptz(6)
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  activeHead    ModelResponse?   @relation("ConversationActiveHead", fields: [activeHeadId], references: [id], onDelete: Restrict)
+  turns         Turn[]
+  requestGroups RequestGroup[]
+  artifacts     Artifact[]
+  memories      Memory[]
+  feedback      Feedback[]
+
+  @@index([workspaceId, updatedAt])
+  @@map("conversations")
+}
+
+model RequestGroup {
+  id                 String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId             String              @map("user_id") @db.Uuid
+  workspaceId        String              @map("workspace_id") @db.Uuid
+  conversationId     String              @map("conversation_id") @db.Uuid
+  idempotencyKey     String              @map("idempotency_key")
+  mode               ConversationMode
+  status             RequestGroupStatus  @default(PENDING)
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  conversation       Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn               Turn?
+  modelRuns          ModelRun[]
+  routingDecision    RoutingDecision?
+  creditReservations CreditReservation[]
+  creditTransactions CreditTransaction[]
+
+  @@unique([userId, idempotencyKey])
+  @@index([conversationId, createdAt])
+  @@map("request_groups")
+}
+
+model Turn {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId   String          @map("conversation_id") @db.Uuid
+  requestGroupId   String          @unique @map("request_group_id") @db.Uuid
+  parentResponseId String?         @map("parent_response_id") @db.Uuid
+  userContent      String          @map("user_content")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  editedAt         DateTime?       @map("edited_at") @db.Timestamptz(6)
+  conversation     Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  requestGroup     RequestGroup    @relation(fields: [requestGroupId], references: [id], onDelete: Restrict)
+  parentResponse   ModelResponse?  @relation("TurnParentResponse", fields: [parentResponseId], references: [id], onDelete: Restrict)
+  childResponses   ModelResponse[] @relation("ResponseTurn")
+  modelRuns        ModelRun[]
+  files            TurnFile[]
+  memorySources    MemorySource[]
+  embeddings       Embedding[]
+  feedback         Feedback[]
+
+  @@index([conversationId, createdAt])
+  @@map("turns")
+}
+
+model RoutingDecision {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestGroupId String                 @unique @map("request_group_id") @db.Uuid
+  strategy       RoutingStrategy
+  reason         String?
+  inputSnapshot  Json?                  @map("input_snapshot") @db.JsonB
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  requestGroup   RequestGroup           @relation(fields: [requestGroupId], references: [id], onDelete: Cascade)
+  candidates     RoutingDecisionModel[]
+
+  @@map("routing_decisions")
+}
+
+model RoutingDecisionModel {
+  routingDecisionId String                @map("routing_decision_id") @db.Uuid
+  registryEntryId   String                @map("registry_entry_id") @db.Uuid
+  position          Int
+  selected          Boolean               @default(false)
+  reason            String?
+  routingDecision   RoutingDecision       @relation(fields: [routingDecisionId], references: [id], onDelete: Cascade)
+  registryEntry     ProviderRegistryEntry @relation(fields: [registryEntryId], references: [id], onDelete: Restrict)
+
+  @@id([routingDecisionId, registryEntryId])
+  @@unique([routingDecisionId, position])
+  @@map("routing_decision_models")
+}
+
+model ModelRun {
+  id                 String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  turnId             String                @map("turn_id") @db.Uuid
+  requestGroupId     String                @map("request_group_id") @db.Uuid
+  providerId         String                @map("provider_id") @db.Uuid
+  modelId            String                @map("model_id") @db.Uuid
+  registryEntryId    String                @map("registry_entry_id") @db.Uuid
+  status             ModelRunStatus        @default(PENDING)
+  providerRequestId  String?               @map("provider_request_id")
+  attempt            Int                   @default(1)
+  startedAt          DateTime?             @map("started_at") @db.Timestamptz(6)
+  completedAt        DateTime?             @map("completed_at") @db.Timestamptz(6)
+  createdAt          DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  turn               Turn                  @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  requestGroup       RequestGroup          @relation(fields: [requestGroupId], references: [id], onDelete: Cascade)
+  provider           Provider              @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  model              Model                 @relation(fields: [modelId], references: [id], onDelete: Restrict)
+  registryEntry      ProviderRegistryEntry @relation(fields: [registryEntryId], references: [id], onDelete: Restrict)
+  response           ModelResponse?
+  contextSnapshot    ContextSnapshot?
+  usageEvents        UsageEvent[]
+  creditReservation  CreditReservation?
+  creditTransactions CreditTransaction[]
+  artifacts          Artifact[]
+
+  @@unique([turnId, providerId, modelId, attempt])
+  @@unique([id, turnId])
+  @@index([requestGroupId])
+  @@index([turnId, providerId])
+  @@map("model_runs")
+}
+
+model ModelResponse {
+  id                    String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId                 String         @unique @map("run_id") @db.Uuid
+  turnId                String         @map("turn_id") @db.Uuid
+  content               String
+  finishReason          String?        @map("finish_reason")
+  selectedAt            DateTime?      @map("selected_at") @db.Timestamptz(6)
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  run                   ModelRun       @relation(fields: [runId, turnId], references: [id, turnId], onDelete: Cascade)
+  turn                  Turn           @relation("ResponseTurn", fields: [turnId], references: [id], onDelete: Cascade)
+  activeForConversation Conversation?  @relation("ConversationActiveHead")
+  childTurns            Turn[]         @relation("TurnParentResponse")
+  memorySources         MemorySource[]
+  embeddings            Embedding[]
+  feedback              Feedback[]
+
+  @@unique([runId, turnId])
+  @@index([turnId, createdAt])
+  @@map("model_responses")
+}
+
+model ContextSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId          String   @unique @map("run_id") @db.Uuid
+  snapshotHash   String   @map("snapshot_hash")
+  summaryVersion Int?     @map("summary_version")
+  sourceIds      Json     @map("source_ids") @db.JsonB
+  tokenEstimate  Int      @map("token_estimate")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  run            ModelRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([snapshotHash])
+  @@map("context_snapshots")
+}
+
+model WorkspaceFile {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId      String               @map("workspace_id") @db.Uuid
+  objectKey        String               @unique @map("object_key")
+  originalName     String               @map("original_name")
+  mime             String
+  size             BigInt
+  checksumSha256   String?              @map("checksum_sha256")
+  scanStatus       FileScanStatus       @default(PENDING) @map("scan_status")
+  processingStatus FileProcessingStatus @default(PENDING) @map("processing_status")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  deletedAt        DateTime?            @map("deleted_at") @db.Timestamptz(6)
+  workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  turns            TurnFile[]
+  chunks           FileChunk[]
+  memorySources    MemorySource[]
+
+  @@index([workspaceId, createdAt])
+  @@map("files")
+}
+
+model TurnFile {
+  turnId    String        @map("turn_id") @db.Uuid
+  fileId    String        @map("file_id") @db.Uuid
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  turn      Turn          @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  file      WorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Restrict)
+
+  @@id([turnId, fileId])
+  @@map("turn_files")
+}
+
+model Artifact {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  type           String
+  objectKey      String         @unique @map("object_key")
+  sourceRunId    String?        @map("source_run_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sourceRun      ModelRun?      @relation(fields: [sourceRunId], references: [id], onDelete: SetNull)
+  memorySources  MemorySource[]
+  embeddings     Embedding[]
+
+  @@index([conversationId, createdAt])
+  @@map("artifacts")
+}
+
+model FileChunk {
+  id         String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fileId     String        @map("file_id") @db.Uuid
+  chunkIndex Int           @map("chunk_index")
+  content    String
+  tokenCount Int?          @map("token_count")
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  file       WorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  embeddings Embedding[]
+
+  @@unique([fileId, chunkIndex])
+  @@map("file_chunks")
+}
+
+model Memory {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String         @map("workspace_id") @db.Uuid
+  ownerUserId    String?        @map("owner_user_id") @db.Uuid
+  conversationId String?        @map("conversation_id") @db.Uuid
+  kind           MemoryKind
+  content        String
+  sourceHash     String?        @map("source_hash")
+  version        Int            @default(1)
+  isPinned       Boolean        @default(false) @map("is_pinned")
+  valid          Boolean        @default(true)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  invalidatedAt  DateTime?      @map("invalidated_at") @db.Timestamptz(6)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ownerUser      User?          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  conversation   Conversation?  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sources        MemorySource[]
+  embeddings     Embedding[]
+
+  @@index([workspaceId, kind, valid])
+  @@index([conversationId, version])
+  @@index([conversationId, valid, version])
+  @@map("memories")
+}
+
+model MemorySource {
+  memoryId   String           @map("memory_id") @db.Uuid
+  sourceKind MemorySourceKind @map("source_kind")
+  turnId     String?          @map("turn_id") @db.Uuid
+  responseId String?          @map("response_id") @db.Uuid
+  fileId     String?          @map("file_id") @db.Uuid
+  artifactId String?          @map("artifact_id") @db.Uuid
+  sourceHash String           @map("source_hash")
+  memory     Memory           @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  turn       Turn?            @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  response   ModelResponse?   @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  file       WorkspaceFile?   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  artifact   Artifact?        @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@id([memoryId, sourceKind, sourceHash])
+  @@map("memory_sources")
+}
+
+model Embedding {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId    String                 @map("workspace_id") @db.Uuid
+  sourceKind     EmbeddingSourceKind    @map("source_kind")
+  turnId         String?                @map("turn_id") @db.Uuid
+  responseId     String?                @map("response_id") @db.Uuid
+  fileChunkId    String?                @map("file_chunk_id") @db.Uuid
+  memoryId       String?                @map("memory_id") @db.Uuid
+  artifactId     String?                @map("artifact_id") @db.Uuid
+  embeddingModel String                 @map("embedding_model")
+  modelVersion   String                 @map("model_version")
+  dimensions     Int
+  contentHash    String                 @map("content_hash")
+  embedding      Unsupported("vector")?
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  workspace      Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  turn           Turn?                  @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  response       ModelResponse?         @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  fileChunk      FileChunk?             @relation(fields: [fileChunkId], references: [id], onDelete: Cascade)
+  memory         Memory?                @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  artifact       Artifact?              @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+
+  @@unique([fileChunkId, embeddingModel, modelVersion])
+  @@index([workspaceId, sourceKind])
+  @@map("embeddings")
+}
+
+model UsageEvent {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  runId         String         @map("run_id") @db.Uuid
+  eventKey      String         @map("event_key")
+  kind          UsageEventKind
+  inputTokens   BigInt         @default(0) @map("input_tokens")
+  outputTokens  BigInt         @default(0) @map("output_tokens")
+  cachedTokens  BigInt         @default(0) @map("cached_tokens")
+  providerUsage Json           @map("provider_usage") @db.JsonB
+  priceSnapshot Json           @map("price_snapshot") @db.JsonB
+  actualCost    Decimal        @map("actual_cost") @db.Decimal(20, 8)
+  costCurrency  String         @default("USD") @map("cost_currency")
+  billedCredits BigInt         @map("billed_credits")
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  run           ModelRun       @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@unique([runId, eventKey])
+  @@index([runId, createdAt])
+  @@map("usage_events")
+}
+
+model CreditWallet {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String              @unique @map("user_id") @db.Uuid
+  availableCredits BigInt              @default(0) @map("available_credits")
+  reservedCredits  BigInt              @default(0) @map("reserved_credits")
+  version          Int                 @default(0)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user             User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  reservations     CreditReservation[]
+  transactions     CreditTransaction[]
+
+  @@map("credit_wallets")
+}
+
+model CreditReservation {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  walletId        String                  @map("wallet_id") @db.Uuid
+  requestGroupId  String                  @map("request_group_id") @db.Uuid
+  modelRunId      String                  @unique @map("model_run_id") @db.Uuid
+  idempotencyKey  String                  @map("idempotency_key")
+  reservedCredits BigInt                  @map("reserved_credits")
+  settledCredits  BigInt?                 @map("settled_credits")
+  status          CreditReservationStatus @default(PENDING)
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  reconciledAt    DateTime?               @map("reconciled_at") @db.Timestamptz(6)
+  wallet          CreditWallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  requestGroup    RequestGroup            @relation(fields: [requestGroupId], references: [id], onDelete: Restrict)
+  modelRun        ModelRun                @relation(fields: [modelRunId], references: [id], onDelete: Restrict)
+  transactions    CreditTransaction[]
+
+  @@unique([walletId, idempotencyKey])
+  @@index([requestGroupId])
+  @@index([status, createdAt])
+  @@map("credit_reservations")
+}
+
+model CreditTransaction {
+  id             String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  walletId       String                  @map("wallet_id") @db.Uuid
+  userId         String                  @map("user_id") @db.Uuid
+  requestGroupId String?                 @map("request_group_id") @db.Uuid
+  modelRunId     String?                 @map("model_run_id") @db.Uuid
+  reservationId  String?                 @map("reservation_id") @db.Uuid
+  idempotencyKey String                  @map("idempotency_key")
+  amount         BigInt
+  availableDelta BigInt                  @map("available_delta")
+  reservedDelta  BigInt                  @map("reserved_delta")
+  type           CreditTransactionType
+  status         CreditTransactionStatus @default(COMPLETED)
+  reason         String?
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  wallet         CreditWallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  user           User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  requestGroup   RequestGroup?           @relation(fields: [requestGroupId], references: [id], onDelete: Restrict)
+  modelRun       ModelRun?               @relation(fields: [modelRunId], references: [id], onDelete: Restrict)
+  reservation    CreditReservation?      @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([walletId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([requestGroupId])
+  @@map("credit_transactions")
+}
+
+model Feedback {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String         @map("user_id") @db.Uuid
+  workspaceId    String         @map("workspace_id") @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  turnId         String?        @map("turn_id") @db.Uuid
+  responseId     String?        @map("response_id") @db.Uuid
+  kind           FeedbackKind
+  score          Int?
+  comment        String?
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversation   Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn           Turn?          @relation(fields: [turnId], references: [id], onDelete: Cascade)
+  response       ModelResponse? @relation(fields: [responseId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([responseId, kind])
+  @@map("feedback")
+}
+
+model AuditEvent {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workspaceId  String?    @map("workspace_id") @db.Uuid
+  actorUserId  String?    @map("actor_user_id") @db.Uuid
+  eventType    String     @map("event_type")
+  resourceType String     @map("resource_type")
+  resourceId   String?    @map("resource_id") @db.Uuid
+  metadata     Json?      @db.JsonB
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  workspace    Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  actor        User?      @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("audit_events")
+}

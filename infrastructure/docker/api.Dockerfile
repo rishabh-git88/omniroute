@@ -25,6 +25,7 @@ RUN pnpm --filter @omniroute/api deploy --prod /opt/omniroute-api
 FROM node:24.20.0-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS=--enable-source-maps
 WORKDIR /app
 
 RUN groupadd --system --gid 1001 omniroute \
@@ -34,4 +35,6 @@ COPY --from=build --chown=omniroute:omniroute /opt/omniroute-api ./
 
 USER omniroute
 EXPOSE 4000
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+  CMD node -e "fetch('http://localhost:4000/v1/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "dist/main.js"]

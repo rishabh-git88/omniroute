@@ -38,6 +38,8 @@ Models never receive direct database or cloud credentials.
 ## Minimum production checklist
 
 - HttpOnly, Secure, SameSite cookies; CSRF protection where necessary; short rotating sessions.
+- OAuth authorization-code flow uses state, nonce, and S256 PKCE; only keyed
+  opaque-session hashes are persisted. See [[Authentication]].
 - Schema, content-type, and size validation at every API boundary.
 - Workspace authorization before database, object, provider, and export access.
 - Audit login, file access, provider switch, tool execution, credit adjustment, export, and deletion.

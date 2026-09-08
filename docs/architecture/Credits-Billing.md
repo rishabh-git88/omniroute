@@ -62,6 +62,20 @@ Keep transactions short, lock a narrowly scoped wallet row, index request-group/
 
 A ledger supplements a cached wallet projection; it is not replaced by a mutable counter. Compare mode reserves per run or an equivalent auditable group total before fan-out.
 
+The MVP uses integer platform credits (`BIGINT`) and Model Registry USD decimal
+strings. `PLATFORM_CREDITS_PER_USD` converts an exact Prisma decimal cost to
+credits by rounding up; binary floating point is never used. A UTC daily grant
+is an idempotent `GRANT` ledger entry keyed as `daily-free:YYYY-MM-DD`.
+
+Before a model run begins, the usage module grants the daily allowance if due,
+then locks the wallet and reserves the registry-based maximum input/output
+cost. A terminal success records final normalized provider usage and its exact
+registry pricing snapshot in the same serializable transaction as settlement.
+Settlement appends a `CHARGE` for actual credits plus a `RELEASE` for any
+remainder. Cancellation and pre-output failure release the full reservation;
+retrying a terminal reconciliation returns the settled wallet without a second
+ledger movement.
+
 ## Related notes
 
 [[API-Design]] · [[Security]] · [[Testing]] · [[Observability]]

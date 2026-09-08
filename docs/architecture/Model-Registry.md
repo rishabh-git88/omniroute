@@ -42,6 +42,11 @@ Cache immutable snapshots safely in [[Redis]], invalidate by version, and avoid 
 
 Review provider/API migrations monthly and use scheduled smoke tests. The UI may display capability and estimate summaries but must not recreate registry rules client-side.
 
+Provider execution receives the selected entry as an immutable snapshot:
+provider key, provider model identifier, registry version, capabilities, and
+pricing version. This gives the adapter the information it needs to translate a
+request while leaving pricing and capability policy in registry administration.
+
 ## Related notes
 
 [[AI-Router]] · [[Provider-Layer]] · [[Frontend]] · [[Observability]]

@@ -23,7 +23,28 @@ PostgreSQL 18 is the primary system of record for identity, workspaces, conversa
 | `credit_transactions` | `id`, `user_id`, `request_group_id`, `amount`, `type`, `status`             | grants/reserves/charges/releases/refunds |
 | `provider_registry`   | `provider`, `model_key`, `capabilities`, `pricing_version`, `enabled`       | versioned model configuration            |
 
-The source also requires a transactionally locked `credit_wallets` projection; its complete columns remain to be designed.
+Phase 2 preserves those canonical names and adds the supporting relations needed
+to make the MVP enforceable:
+
+- `accounts` stores external identity references and `sessions` stores only a
+  one-way session token hash; neither contains OAuth tokens or provider secrets.
+- `request_groups`, `routing_decisions`, and `routing_decision_models` make
+  idempotency and the routing plan durable before any future provider call.
+- `providers`, `models`, and versioned `provider_registry` rows form the model
+  registry abstraction. Runs reference the exact registry row used.
+- `credit_wallets` is a user-scoped, lockable balance projection;
+  `credit_reservations` owns per-run lifecycle state; `credit_transactions` is
+  the append-only ledger.
+- `subscriptions` and typed `entitlements` represent commercial state without
+  storing payment credentials.
+- `file_chunks`, `memories`, `memory_sources`, and `embeddings` retain provenance
+  and workspace scope. MVP text chunks use a 64-dimensional pgvector value;
+  summary source hashes version deterministic summaries when the selected path
+  changes.
+- `feedback` and `audit_events` store scoped product signals and sensitive-state
+  audit metadata without duplicating raw prompt content.
+
+See [[Database-Diagram]] for the complete Phase 2 relationship diagram.
 
 ## Relationships and invariants
 
@@ -43,10 +64,15 @@ erDiagram
 ```
 
 - One idempotency key per user/logical request group.
-- At most one active selected response per turn, enforced transactionally.
+- At most one active selected response per turn, enforced by a partial unique index.
 - Foreign keys connect runs to turns and responses to runs.
-- Required indexes include conversation/time, turn/provider, user/time, and request group.
+- Cross-table triggers ensure request groups, turns, active heads, model registry
+  snapshots, and credit records remain in the same owner/workspace/conversation scope.
+- Required indexes include conversation/time, turn/provider, user/time, request
+  group, active reservations, and enabled registry entries.
 - JSONB is limited to provider metadata and versioned snapshots, not general relational state.
+- Credit balances cannot be negative, reservation settlement cannot exceed the
+  reserved amount, and ledger rows cannot be updated or deleted.
 
 ## Inputs and outputs
 
@@ -62,10 +88,10 @@ Scope every query by workspace, audit sensitive state changes, encrypt in transi
 
 ## Related notes
 
-[[ADR-002-PostgreSQL]] · [[Redis]] · [[Vector-Memory]] · [[Credits-Billing]] · [[CI-CD]]
+[[ADR-002-PostgreSQL]] · [[ADR-005-Core-Data-Model]] · [[Database-Diagram]] · [[Redis]] · [[Vector-Memory]] · [[Credits-Billing]] · [[CI-CD]]
 
 ## Open Questions
 
-- What are the precise branch/head foreign-key shapes and deferrable constraint strategy?
-- Is the wallet scoped to user, workspace, or both for future teams?
 - Which content uses soft deletion versus hard deletion under retention policy?
+- What production retention periods apply to immutable usage, ledger, feedback,
+  and audit records?

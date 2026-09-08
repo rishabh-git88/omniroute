@@ -48,6 +48,13 @@ Add BullMQ workers when a Phase 1 follow-up introduces durable background jobs. 
 
 Repository interfaces live inside modules. Shared packages expose Zod schemas, DTOs, canonical events, config, and telemetry—not ORM entities.
 
+The MVP conversation module persists a request group, turn, routing decision,
+model run, and context snapshot before it begins execution. Its local
+`MockProvider` is an `AIProvider` contract adapter that emits normalized
+streaming events and supports cancellation; it has no provider credential or
+SDK dependency. This deliberately exercises the same provider-neutral API/SSE
+boundary that the Router client will use when real adapters are enabled.
+
 ## Related notes
 
 [[System-Architecture]] · [[ADR-001-Monorepo]] · [[Testing]] · [[Docker]]

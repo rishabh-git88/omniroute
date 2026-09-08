@@ -1,8 +1,10 @@
 import { Controller, Get } from '@nestjs/common';
 import type { HealthResponse } from '@omniroute/types';
 
+import { Public } from '../identity/public.decorator.js';
 import { HealthService } from './health.service.js';
 
+@Public()
 @Controller('health')
 export class HealthController {
   public constructor(private readonly healthService: HealthService) {}
@@ -18,7 +20,7 @@ export class HealthController {
   }
 
   @Get('ready')
-  public getReadiness(): HealthResponse {
-    return this.healthService.getHealth();
+  public getReadiness(): Promise<HealthResponse> {
+    return this.healthService.getReadiness();
   }
 }

@@ -61,6 +61,27 @@ Use lexical search first, pgvector only when justified, bounded token budgets, v
 
 Recent turns are verbatim within budget. Structured summaries record decisions, constraints, open tasks, entities, and artifact references. User-approved pinned facts outrank inferred durable memory.
 
+For the MVP, the NestJS `ContextBuilder` walks from the new turn's
+`parent_response_id` to the root and includes only that selected branch as
+canonical user/assistant messages. It layers workspace rules, user preferences,
+a versioned deterministic conversation summary when history exceeds the recent
+window, and up to three workspace-scoped pgvector file chunks. It returns a
+provider-neutral `ContextBundle` containing canonical messages, provenance IDs,
+summary version, and a token estimate. Every provider adapter consumes that
+bundle through `CanonicalChatRequest.context`.
+
+Text uploads are synchronously normalized and chunked for the MVP. A local,
+deterministic 64-dimensional embedding keeps development credentials-free; it
+is an embedding adapter boundary rather than a production-quality embedding
+claim. PostgreSQL stores chunks, embedding provenance, vectors, and snapshot
+metadata; raw object storage and background extraction remain deferred.
+
+“Try Another AI” reuses the same turn and therefore the exact same canonical
+history as the initial response. Its alternative `model_run` receives its own
+snapshot row, but an alternative response is excluded from future context until
+the user selects it. Selection updates `conversations.active_head_id`; the
+alternative is retained for comparison and routing evaluation.
+
 ## Related notes
 
 [[AI-Router]] · [[Provider-Layer]] · [[Security]] · [[Evaluation-Engine]]

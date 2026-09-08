@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { EnvironmentValidationError, parseApiEnvironment } from './api.js';
+import {
+  EnvironmentValidationError,
+  parseApiEnvironment,
+  parseAuthEnvironment,
+} from './api.js';
 
 describe('parseApiEnvironment', () => {
   it('provides safe local defaults', () => {
     const environment = parseApiEnvironment({});
 
     expect(environment.API_PORT).toBe(4000);
+    expect(environment.LOG_LEVEL).toBe('info');
     expect(environment.NODE_ENV).toBe('development');
   });
 
@@ -26,5 +31,36 @@ describe('parseApiEnvironment', () => {
     } catch (error) {
       expect(String(error)).not.toContain('sensitive');
     }
+  });
+});
+
+describe('parseAuthEnvironment', () => {
+  const validEnvironment = {
+    API_PUBLIC_URL: 'http://localhost:4000',
+    AUTH_SESSION_SECRET: 'a-secure-test-secret-with-32-characters',
+    GOOGLE_CLIENT_ID: 'google-client-id',
+    GOOGLE_CLIENT_SECRET: 'google-client-secret',
+    WEB_APP_URL: 'http://localhost:3000',
+  };
+
+  it('requires server-only OAuth and session settings', () => {
+    expect(() => parseAuthEnvironment({})).toThrow(
+      new EnvironmentValidationError([
+        'API_PUBLIC_URL',
+        'AUTH_SESSION_SECRET',
+        'GOOGLE_CLIENT_ID',
+        'GOOGLE_CLIENT_SECRET',
+        'WEB_APP_URL',
+      ]),
+    );
+    expect(parseAuthEnvironment(validEnvironment).AUTH_SESSION_TTL_HOURS).toBe(
+      24,
+    );
+  });
+
+  it('requires HTTPS origins in production', () => {
+    expect(() =>
+      parseAuthEnvironment({ ...validEnvironment, NODE_ENV: 'production' }),
+    ).toThrow(EnvironmentValidationError);
   });
 });

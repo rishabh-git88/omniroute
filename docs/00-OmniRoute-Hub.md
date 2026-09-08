@@ -12,7 +12,7 @@ OmniRoute is a cross-model conversation workspace whose promise is: **your conve
 
 ## Architecture
 
-- [[System-Architecture]] — system boundary and ownership
+- [[System-Architecture]] and [[Authentication]] — system, identity, and session ownership
 - [[Frontend]] and [[Backend]] — deployable application responsibilities
 - [[AI-Router]] — capability-aware routing and comparison orchestration
 - [[Provider-Layer]] and [[Model-Registry]] — provider isolation and configuration
@@ -22,7 +22,7 @@ OmniRoute is a cross-model conversation workspace whose promise is: **your conve
 
 ## Data
 
-- [[PostgreSQL-Schema]] — durable relational state
+- [[PostgreSQL-Schema]] and [[Database-Diagram]] — durable relational state and relationships
 - [[Redis]] — ephemeral coordination and streaming state
 - [[Vector-Memory]] — optional pgvector-backed semantic retrieval
 
@@ -42,7 +42,7 @@ OmniRoute is a cross-model conversation workspace whose promise is: **your conve
 ## Roadmap and decisions
 
 - [[Roadmap]] and [[Current-Sprint]]
-- [[ADR-001-Monorepo]], [[ADR-002-PostgreSQL]], [[ADR-003-AI-Router]], and [[ADR-004-FastAPI-Router-Service]]
+- [[ADR-001-Monorepo]], [[ADR-002-PostgreSQL]], [[ADR-003-AI-Router]], [[ADR-004-FastAPI-Router-Service]], [[ADR-005-Core-Data-Model]], [[ADR-006-MVP-Authentication]], and [[ADR-009-MVP-Workspace-Memory]]
 
 ## Knowledge graph
 
