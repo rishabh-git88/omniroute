@@ -12,7 +12,8 @@ import {
   useState,
 } from 'react';
 
-import { apiBaseUrl, useAuth } from './auth-provider';
+import { API_V1_URL } from './api-url';
+import { useAuth } from './auth-provider';
 import { decodeSseFrames } from './conversation-stream';
 
 type Model = {
@@ -103,7 +104,7 @@ async function api<T>(
   init: RequestInit = {},
   csrfToken?: string,
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const response = await fetch(`${API_V1_URL}${path}`, {
     ...init,
     cache: 'no-store',
     credentials: 'include',
@@ -227,7 +228,7 @@ export function ConversationWorkspace({
       let buffer = '';
       try {
         const response = await fetch(
-          `${apiBaseUrl}/request-groups/${groupId}/events`,
+          `${API_V1_URL}/request-groups/${groupId}/events`,
           {
             cache: 'no-store',
             credentials: 'include',

@@ -190,5 +190,6 @@ jobs:
       - name: Build production images
         run: |
           docker build --file infrastructure/docker/api.Dockerfile --tag omniroute-api:ci .
-          docker build --file infrastructure/docker/web.Dockerfile --tag omniroute-web:ci .
+          docker build --file infrastructure/docker/web.Dockerfile --tag omniroute-web:ci \
+            --build-arg NEXT_PUBLIC_API_URL=https://api.example.invalid .
           docker build --file infrastructure/docker/ai-router.Dockerfile --tag omniroute-ai-router:ci .

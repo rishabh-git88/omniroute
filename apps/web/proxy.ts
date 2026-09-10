@@ -4,9 +4,11 @@ import { NextResponse } from 'next/server';
 
 export function proxy(request: NextRequest): NextResponse {
   const hasSession = Boolean(request.cookies.get(AUTH_SESSION_COOKIE)?.value);
-  const isLogin = request.nextUrl.pathname === '/login';
+  const { pathname } = request.nextUrl;
+  const isProtectedRoute =
+    pathname === '/chat' || pathname.startsWith('/chat/');
 
-  if (!hasSession && !isLogin) {
+  if (!hasSession && isProtectedRoute) {
     const login = new URL('/login', request.url);
     return NextResponse.redirect(login);
   }
@@ -14,5 +16,5 @@ export function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ['/', '/chat/:path*', '/login'],
+  matcher: ['/chat/:path*'],
 };

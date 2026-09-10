@@ -1,5 +1,6 @@
-import { parseWebEnvironment } from '@omniroute/config/web';
 import Link from 'next/link';
+
+import { API_V1_URL } from '../api-url';
 
 export default async function LoginPage({
   searchParams,
@@ -7,10 +8,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const apiBaseUrl = parseWebEnvironment({
-    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
-  }).NEXT_PUBLIC_API_BASE_URL;
-  const loginUrl = new URL(`${apiBaseUrl}/auth/google`);
+  const loginUrl = new URL(`${API_V1_URL}/auth/google`);
   loginUrl.searchParams.set('returnTo', '/');
 
   return (

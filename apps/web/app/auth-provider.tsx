@@ -1,6 +1,5 @@
 'use client';
 
-import { parseWebEnvironment } from '@omniroute/config/web';
 import type { CurrentUserResponse } from '@omniroute/types';
 import { useRouter } from 'next/navigation';
 import {
@@ -13,6 +12,8 @@ import {
   useState,
 } from 'react';
 
+import { API_V1_URL } from './api-url';
+
 type AuthState =
   | { status: 'loading'; session: null }
   | { status: 'anonymous'; session: null }
@@ -24,13 +25,10 @@ type AuthContextValue = AuthState & {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-export const apiBaseUrl = parseWebEnvironment({
-  NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
-}).NEXT_PUBLIC_API_BASE_URL;
 
 async function loadAuthState(): Promise<AuthState> {
   try {
-    const response = await fetch(`${apiBaseUrl}/auth/me`, {
+    const response = await fetch(`${API_V1_URL}/auth/me`, {
       cache: 'no-store',
       credentials: 'include',
     });
@@ -68,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (state.status !== 'authenticated') return;
-    const response = await fetch(`${apiBaseUrl}/auth/logout`, {
+    const response = await fetch(`${API_V1_URL}/auth/logout`, {
       credentials: 'include',
       headers: { 'x-csrf-token': state.session.csrfToken },
       method: 'POST',
