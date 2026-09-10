@@ -44,6 +44,7 @@ export class AuthCookieService {
   public setSession(reply: FastifyReply, token: string): void {
     reply.setCookie(AUTH_SESSION_COOKIE, token, {
       ...this.baseOptions,
+      ...this.sessionDomain,
       maxAge: this.environment.AUTH_SESSION_TTL_HOURS * 60 * 60,
       path: '/',
       priority: 'high',
@@ -53,18 +54,22 @@ export class AuthCookieService {
   public clearSession(reply: FastifyReply): void {
     reply.clearCookie(AUTH_SESSION_COOKIE, {
       ...this.baseOptions,
+      ...this.sessionDomain,
       path: '/',
     });
   }
 
   private get baseOptions() {
     return {
-      ...(this.environment.AUTH_COOKIE_DOMAIN
-        ? { domain: this.environment.AUTH_COOKIE_DOMAIN }
-        : {}),
       httpOnly: true,
       sameSite: 'lax' as const,
       secure: this.environment.NODE_ENV === 'production',
     };
+  }
+
+  private get sessionDomain() {
+    return this.environment.AUTH_COOKIE_DOMAIN
+      ? { domain: this.environment.AUTH_COOKIE_DOMAIN }
+      : {};
   }
 }

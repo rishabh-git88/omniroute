@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { httpOriginSchema, isProductionOrigin } from './http-origin.js';
 
 const environmentSchema = z.enum(['development', 'test', 'production']);
 
@@ -6,7 +7,7 @@ const apiEnvironmentSchema = z.object({
   AI_ROUTER_URL: z.url().default('http://localhost:8001'),
   API_HOST: z.string().min(1).default('0.0.0.0'),
   API_PORT: z.coerce.number().int().positive().max(65_535).default(4000),
-  CORS_ORIGIN: z.url().default('http://localhost:3000'),
+  CORS_ORIGIN: httpOriginSchema.default('http://localhost:3000'),
   DATABASE_URL: z
     .string()
     .min(1)
@@ -24,10 +25,20 @@ const apiEnvironmentSchema = z.object({
 
 const authEnvironmentSchema = z
   .object({
-    API_PUBLIC_URL: z.url(),
+    API_PUBLIC_URL: httpOriginSchema,
     AUTH_COOKIE_DOMAIN: z.preprocess(
       (value) => (value === '' ? undefined : value),
-      z.string().trim().min(1).optional(),
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .transform((value) => value.replace(/^\./, ''))
+        .refine(
+          (value) =>
+            /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/.test(value),
+          'must be a parent DNS domain',
+        )
+        .optional(),
     ),
     AUTH_SESSION_ROTATION_MINUTES: z.coerce
       .number()
@@ -45,19 +56,44 @@ const authEnvironmentSchema = z
     GOOGLE_CLIENT_ID: z.string().trim().min(1),
     GOOGLE_CLIENT_SECRET: z.string().trim().min(1),
     NODE_ENV: environmentSchema.default('development'),
-    WEB_APP_URL: z.url(),
+    WEB_APP_URL: httpOriginSchema,
   })
   .superRefine((environment, context) => {
+    const domain = environment.AUTH_COOKIE_DOMAIN;
+    if (domain) {
+      for (const key of ['API_PUBLIC_URL', 'WEB_APP_URL'] as const) {
+        const host = new URL(environment[key]).hostname;
+        if (host !== domain && !host.endsWith(`.${domain}`)) {
+          context.addIssue({
+            code: 'custom',
+            message: 'cookie domain must contain both hosts',
+            path: ['AUTH_COOKIE_DOMAIN'],
+          });
+        }
+      }
+    }
     if (environment.NODE_ENV !== 'production') return;
 
     for (const key of ['API_PUBLIC_URL', 'WEB_APP_URL'] as const) {
-      if (new URL(environment[key]).protocol !== 'https:') {
+      if (!isProductionOrigin(environment[key])) {
         context.addIssue({
           code: 'custom',
-          message: 'must use HTTPS in production',
+          message: 'must use a public HTTPS DNS origin in production',
           path: [key],
         });
       }
+    }
+    if (
+      !domain ||
+      new URL(environment.WEB_APP_URL).hostname !== `app.${domain}` ||
+      new URL(environment.API_PUBLIC_URL).hostname !== `api.${domain}`
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'production requires app/API sibling hosts and their explicit shared cookie domain',
+        path: ['AUTH_COOKIE_DOMAIN'],
+      });
     }
   });
 

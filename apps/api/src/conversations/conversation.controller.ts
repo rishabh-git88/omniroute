@@ -1,3 +1,4 @@
+import { PassThrough, type Writable } from 'node:stream';
 import {
   Body,
   Controller,
@@ -68,8 +69,8 @@ function idempotencyKey(
   return value.trim();
 }
 
-function writeEvent(reply: FastifyReply, event: ConversationStreamEvent): void {
-  reply.raw.write(
+function writeEvent(stream: Writable, event: ConversationStreamEvent): void {
+  stream.write(
     `id: ${event.id}\nevent: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`,
   );
 }
@@ -260,14 +261,17 @@ export class ConversationStreamController {
       authentication(request).workspace.id,
       groupId,
     );
-    reply.hijack();
-    reply.raw.writeHead(200, {
+    const stream = new PassThrough();
+    reply.headers({
       'cache-control': 'no-cache, no-transform',
       connection: 'keep-alive',
       'content-type': 'text/event-stream; charset=utf-8',
       'x-accel-buffering': 'no',
     });
-    reply.raw.write(': connected\n\n');
+    // Fastify must run onSend hooks (including cookie serialization) before
+    // piping SSE. Hijacking the raw response bypasses that lifecycle.
+    void reply.send(stream);
+    stream.write(': connected\n\n');
 
     let closed = false;
     let unsubscribe: () => void = () => undefined;
@@ -275,15 +279,15 @@ export class ConversationStreamController {
       if (closed) return;
       closed = true;
       unsubscribe();
-      reply.raw.end();
+      stream.end();
     };
     const latestId = this.events.history(groupId).at(-1)?.id ?? 0;
     unsubscribe = this.events.subscribe(groupId, (event) => {
       if (event.id <= latestId || closed) return;
-      writeEvent(reply, event);
+      writeEvent(stream, event);
       if (isTerminal(event)) close();
     });
-    for (const event of this.events.history(groupId)) writeEvent(reply, event);
+    for (const event of this.events.history(groupId)) writeEvent(stream, event);
     if (
       group.status === 'COMPLETED' ||
       group.status === 'CANCELLED' ||
@@ -292,6 +296,6 @@ export class ConversationStreamController {
       close();
       return;
     }
-    request.raw.once('close', close);
+    reply.raw.once('close', close);
   }
 }

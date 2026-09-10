@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "start": "next start --port ${WEB_PORT:-3000}",
     "test": "vitest run",
+    "test:production": "node scripts/verify-production.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

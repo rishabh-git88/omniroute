@@ -8,6 +8,11 @@ const nextConfig: NextConfig = {
   output: 'standalone',
   outputFileTracingRoot: fileURLToPath(new URL('../..', import.meta.url)),
   reactStrictMode: true,
+  async redirects() {
+    return [
+      { source: '/favicon.ico', destination: '/icon.svg', permanent: true },
+    ];
+  },
   transpilePackages: ['@omniroute/config', '@omniroute/types', '@omniroute/ui'],
 };
 

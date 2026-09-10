@@ -5,11 +5,14 @@ import { describe, expect, it } from 'vitest';
 import { proxy } from './proxy';
 
 describe('authentication proxy', () => {
-  it.each(['/', '/login', '/api/health'])('allows public route %s', (path) => {
-    const response = proxy(new NextRequest(`http://localhost:3000${path}`));
+  it.each(['/', '/login', '/api/health', '/icon.svg', '/favicon.ico'])(
+    'allows public route %s',
+    (path) => {
+      const response = proxy(new NextRequest(`http://localhost:3000${path}`));
 
-    expect(response.headers.get('location')).toBeNull();
-  });
+      expect(response.headers.get('location')).toBeNull();
+    },
+  );
 
   it('redirects an anonymous chat request to login', () => {
     const response = proxy(

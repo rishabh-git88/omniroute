@@ -1,6 +1,5 @@
 'use client';
 
-import type { CurrentUserResponse } from '@omniroute/types';
 import { useRouter } from 'next/navigation';
 import {
   createContext,
@@ -9,15 +8,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
 import { API_V1_URL } from './api-url';
-
-type AuthState =
-  | { status: 'loading'; session: null }
-  | { status: 'anonymous'; session: null }
-  | { status: 'authenticated'; session: CurrentUserResponse };
+import { loadAuthState, type AuthState } from './auth-state';
 
 type AuthContextValue = AuthState & {
   refresh: () => Promise<void>;
@@ -26,43 +22,27 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function loadAuthState(): Promise<AuthState> {
-  try {
-    const response = await fetch(`${API_V1_URL}/auth/me`, {
-      cache: 'no-store',
-      credentials: 'include',
-    });
-    if (response.status === 401) return { session: null, status: 'anonymous' };
-    if (!response.ok) throw new Error('Unable to load your session');
-    return {
-      session: (await response.json()) as CurrentUserResponse,
-      status: 'authenticated',
-    };
-  } catch {
-    return { session: null, status: 'anonymous' };
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [state, setState] = useState<AuthState>({
     session: null,
     status: 'loading',
   });
+  const generation = useRef(0);
+  const invalidatePendingRequests = useCallback(() => {
+    generation.current++;
+  }, []);
 
   const refresh = useCallback(async () => {
-    setState(await loadAuthState());
+    const requestGeneration = ++generation.current;
+    const nextState = await loadAuthState();
+    if (generation.current === requestGeneration) setState(nextState);
   }, []);
 
   useEffect(() => {
-    let active = true;
-    void loadAuthState().then((nextState) => {
-      if (active) setState(nextState);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+    void refresh();
+    return invalidatePendingRequests;
+  }, [refresh, invalidatePendingRequests]);
 
   const signOut = useCallback(async () => {
     if (state.status !== 'authenticated') return;
@@ -73,10 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (!response.ok && response.status !== 401)
       throw new Error('Unable to sign out');
+    invalidatePendingRequests();
     setState({ session: null, status: 'anonymous' });
     router.replace('/login');
     router.refresh();
-  }, [router, state]);
+  }, [router, state, invalidatePendingRequests]);
 
   const value = useMemo<AuthContextValue>(
     () => ({ ...state, refresh, signOut }),

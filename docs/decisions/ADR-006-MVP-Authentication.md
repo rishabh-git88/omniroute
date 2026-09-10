@@ -38,5 +38,6 @@ domain or same-origin proxy topology that also permits Next.js's optimistic chec
 
 ## Open Questions
 
-- Will production use sibling subdomains with a shared cookie domain or a
-  same-origin reverse proxy?
+- Resolved by [[ADR-010-Browser-API-Auth-Boundary]]: production uses configured
+  app/API sibling subdomains with shared session cookies and API-host-only OAuth
+  transaction cookies. The actual owned domain remains deployment configuration.

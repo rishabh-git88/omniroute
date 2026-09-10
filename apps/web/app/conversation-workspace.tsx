@@ -1,4 +1,5 @@
 'use client';
+import { AuthUnavailable } from './auth-unavailable';
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -525,6 +526,12 @@ export function ConversationWorkspace({
 
   if (auth.status === 'loading')
     return <main className="auth-status">Restoring your workspace…</main>;
+  if (auth.status === 'unavailable')
+    return (
+      <main className="auth-status">
+        <AuthUnavailable />
+      </main>
+    );
   if (auth.status !== 'authenticated') {
     return (
       <main className="auth-status">

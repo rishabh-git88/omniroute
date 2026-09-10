@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { API_V1_URL } from '../api-url';
+import { AuthUnavailable } from '../auth-unavailable';
 
 export default async function LoginPage({
   searchParams,
@@ -14,7 +15,7 @@ export default async function LoginPage({
   return (
     <main className="login-page">
       <section className="login-card" aria-labelledby="login-title">
-        <Link className="brand" href="/login">
+        <Link className="brand" href="/">
           <span className="brand-mark">O</span>
           OmniRoute
         </Link>
@@ -24,6 +25,7 @@ export default async function LoginPage({
           Compare answers, choose the strongest path, and change providers
           without starting over.
         </p>
+        <AuthUnavailable />
         {error ? (
           <p className="login-error" role="alert">
             Google sign-in could not be completed. Please try again.

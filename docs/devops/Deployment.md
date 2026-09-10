@@ -27,6 +27,13 @@ flowchart TB
 
 ## Environments
 
+For the fixed public-release architecture, use [[RELEASE-SCOPE]]; the managed-host
+alternatives below are historical planning. Web/API auth configuration follows
+[[ADR-010-Browser-API-Auth-Boundary]]: Vercel serves `app.<domain>`, the API serves
+`api.<domain>`, and the session cookie uses the owned shared domain. Configure the
+public API origin at web build time and rebuild for a different environment.
+Google callbacks and API runtime origins must agree with that deployment.
+
 | Environment | Purpose | Data rule |
 |---|---|---|
 | Local | Compose dependencies and provider mocks | synthetic data; developer keys in secret storage |

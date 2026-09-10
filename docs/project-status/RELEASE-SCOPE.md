@@ -125,8 +125,11 @@ percentage is inferred from previous phase names.
 The hosting stack, required features, frozen snapshots, and excluded features are
 settled. Remaining decisions are:
 
-- What production/staging domains and cookie arrangement will connect Vercel,
-  Google callbacks, and the API? What AWS region and data residency apply?
+- Which owned production/staging domain will connect Vercel, Google callbacks,
+  and the API? The cookie arrangement is settled by
+  [[ADR-010-Browser-API-Auth-Boundary]]: app/API sibling hosts, shared session
+  cookies, and API-host-only OAuth transaction cookies. What AWS region and data
+  residency apply?
 - Which IaC tool, image registry configuration, internal service-authentication
   mechanism, deployment environments, and approvers will be used?
 - Which initial model versions, capabilities, prices, mode weights, and Compare 3

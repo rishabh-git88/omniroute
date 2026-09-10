@@ -2,19 +2,9 @@
 
 import Link from 'next/link';
 
-import { useAuth } from './auth-provider';
+import { AuthUnavailable } from './auth-unavailable';
 
 export function LandingPage() {
-  const auth = useAuth();
-
-  if (auth.status === 'loading') {
-    return <main className="landing-loading">Loading OmniRoute…</main>;
-  }
-
-  if (auth.status === 'authenticated') {
-    return <main className="landing-loading">Opening your workspace…</main>;
-  }
-
   return (
     <main className="landing-page">
       <nav className="landing-nav" aria-label="Main navigation">
@@ -26,6 +16,7 @@ export function LandingPage() {
           Sign in
         </Link>
       </nav>
+      <AuthUnavailable />
 
       <section className="landing-hero" aria-labelledby="landing-title">
         <p className="landing-kicker">

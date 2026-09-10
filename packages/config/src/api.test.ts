@@ -63,4 +63,41 @@ describe('parseAuthEnvironment', () => {
       parseAuthEnvironment({ ...validEnvironment, NODE_ENV: 'production' }),
     ).toThrow(EnvironmentValidationError);
   });
+
+  const production = {
+    ...validEnvironment,
+    NODE_ENV: 'production',
+    API_PUBLIC_URL: 'https://api.example.com',
+    WEB_APP_URL: 'https://app.example.com',
+    AUTH_COOKIE_DOMAIN: '.example.com',
+  };
+
+  it('accepts and normalizes configured sibling domains', () => {
+    expect(parseAuthEnvironment(production).AUTH_COOKIE_DOMAIN).toBe(
+      'example.com',
+    );
+    expect(
+      parseAuthEnvironment({
+        ...production,
+        API_PUBLIC_URL: 'https://api.example.co.uk',
+        WEB_APP_URL: 'https://app.example.co.uk',
+        AUTH_COOKIE_DOMAIN: 'example.co.uk',
+      }).AUTH_COOKIE_DOMAIN,
+    ).toBe('example.co.uk');
+  });
+
+  it.each([
+    { AUTH_COOKIE_DOMAIN: '' },
+    { AUTH_COOKIE_DOMAIN: 'com' },
+    { AUTH_COOKIE_DOMAIN: 'unrelated.com' },
+    { AUTH_COOKIE_DOMAIN: 'https://example.com' },
+    { WEB_APP_URL: 'https://project.vercel.app' },
+    { API_PUBLIC_URL: 'https://api.example.com/v1' },
+    { WEB_APP_URL: 'https://app.example.com?private=value' },
+    { API_PUBLIC_URL: 'https://localhost' },
+  ])('rejects invalid production cookie topology %j', (override) => {
+    expect(() => parseAuthEnvironment({ ...production, ...override })).toThrow(
+      EnvironmentValidationError,
+    );
+  });
 });

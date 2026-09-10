@@ -35,7 +35,7 @@ overlap after its prerequisites pass; order does not imply a calendar estimate.
 | --- | --- | --- | --- | --- |
 | R00 | P0 | PARTIAL | Reconcile architecture records and remaining release policies | None |
 | R01 | P0 | BROKEN | Restore reproducible clean-checkout CI and artifact validation | R00 |
-| R02 | P0 | BROKEN | Repair production web/API configuration, CORS, and authentication | R01 |
+| R02 | P0 | PARTIAL | Repair production web/API configuration, CORS, and authentication | R01 |
 | R03 | P0 | BLOCKED | Establish disposable database verification and migration alignment | R01 |
 | R04 | P0 | PARTIAL | Prove conversation, run, tenant, and ledger persistence invariants | R02, R03 |
 | R05 | P0 | BROKEN | Correct canonical context and persist frozen execution snapshots | R04 |
@@ -102,6 +102,15 @@ Files: `.github/workflows/ci.yml`, `package.json`, `turbo.json`, workspace packa
 scripts, and `infrastructure/docker/*.Dockerfile`.
 
 ## R02 — Browser/API/authentication boundary
+
+Implementation update, 2026-09-10: the explicitly authorized boundary work is
+implemented and locally regression-tested; see [[ADR-010-Browser-API-Auth-Boundary]]
+and [CURRENT-STATE](CURRENT-STATE.md#release-milestone-1-implementation-update).
+The configured build and real-browser smoke pass. Live Google/session-database
+acceptance and deployed shared-domain evidence remain open. This targeted work
+did not complete R01 CI repair or R03 database verification; dependency ordering
+still applies to release acceptance. The following paragraph records the original
+defects, which no longer describe the repaired local browser boundary.
 
 The audited configured browser bundle retained localhost; `/login` failed without
 runtime configuration; CORS rejected required request headers; raw SSE replies

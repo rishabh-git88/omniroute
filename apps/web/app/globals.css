@@ -1,5 +1,29 @@
 @import 'tailwindcss';
 
+.auth-unavailable {
+  margin: 1rem auto;
+  padding: 1rem;
+  max-width: 42rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.6rem;
+  color: var(--text);
+  background: var(--surface);
+}
+
+.auth-unavailable button {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.auth-unavailable button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
 :root {
   color-scheme: dark;
   font-family:

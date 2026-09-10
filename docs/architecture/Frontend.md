@@ -62,6 +62,29 @@ continuation without removing its alternatives.
 
 [[User-Flows]] · [[Backend]] · [[Security]] · [[Testing]] · [[Deployment]]
 
+## Release Milestone 1 browser boundary
+
+[[ADR-010-Browser-API-Auth-Boundary]] defines the implemented environment/session
+behavior. `NEXT_PUBLIC_API_URL` is a statically accessed, validated API origin;
+`/v1` is appended by the web client. Development/test mode defaults to
+`http://localhost:4000` only when the value is absent. Empty/invalid values fail.
+Production requires an explicit HTTPS DNS origin, never falls back to a local
+host, and rejects IP literals, URL credentials, paths, queries, and fragments.
+The public origin is compiled into browser and server bundles: rebuild when it
+changes. Login derives its Google link from this origin alone.
+
+The public landing renders immediately during the bounded background session
+check. HTTP 401 shows anonymous state; outage/timeout displays a retryable
+unavailable state, including on login and protected workspace pages. The existing
+O branding is provided by `app/icon.svg`; `/favicon.ico` redirects to it.
+
+After a configured build, `pnpm --filter @omniroute/web test:production` runs a
+local production/browser smoke test. Supply the same `NEXT_PUBLIC_API_URL` used
+at build time and an installed Chromium executable through `CHROME_BINARY` if
+`google-chrome` is unavailable. The script intercepts session requests and uses
+no real provider/OAuth credentials. It intentionally supplies a conflicting
+runtime API URL to detect accidental runtime overrides.
+
 ## Open Questions
 
 - What exact responsive breakpoint enables the optional split comparison view?

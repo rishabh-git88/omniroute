@@ -2,6 +2,15 @@
 
 Planning reset: 2026-09-10.
 
+Implementation update, 2026-09-10: the user's subsequent **Frontend/API/Auth
+Foundation** task authorized the thirteen browser-boundary fixes within R02.
+Those fixes, their regression tests, and a configured production/browser smoke
+check are implemented; see [CURRENT-STATE](CURRENT-STATE.md#release-milestone-1-implementation-update)
+and [[ADR-010-Browser-API-Auth-Boundary]]. The broader baseline milestone below
+remains PARTIAL: clean-checkout CI, disposable database/migration verification,
+container builds, and live Google/deployed-domain acceptance are still separate
+open gates. No provider integration was performed.
+
 **Milestone: establish a reproducible, authenticated browser-to-database baseline.**
 
 Current status: **PARTIAL**. Existing foundations reduce the work, but broken CI,
@@ -50,19 +59,20 @@ Keep each item unchecked until evidence exists for the implementation revision.
 Historical audit results are a baseline, not a substitute for regression checks.
 
 - [ ] Clean-checkout frozen JS/Python dependency installation succeeds.
-- [ ] Lint, formatting, TypeScript/Python type checks, and existing unit/contract
-      tests pass using the same dependency ordering as CI.
-- [ ] A configured production Next.js build succeeds; the browser demonstrably
+- [x] Lint, formatting, TypeScript/Python type checks, and existing unit/contract
+      tests pass through the root dependency graph. Repairing isolated CI job
+      dependency ordering remains under the separate CI checkbox below.
+- [x] A configured production Next.js build succeeds; the browser demonstrably
       uses its configured HTTPS API origin for API and sign-in requests.
-- [ ] Missing/invalid production API configuration is tested; no accidental
+- [x] Missing/invalid production API configuration is tested; no accidental
       browser localhost fallback occurs.
-- [ ] Anonymous `/` is public; the landing experience does not get stuck on
+- [x] Anonymous `/` is public; the landing experience does not get stuck on
       session loading; protected chat routes require authentication.
-- [ ] Browser command preflight permits the headers actually used by commands.
+- [x] Browser command preflight permits the headers actually used by commands.
       SSE preserves required CORS/session/request headers.
 - [ ] Google callback, authenticated session, logout, expiry/rotation, and CSRF
       rejection pass using representative frontend/API domains.
-- [ ] Redirect escape fixtures are rejected and synthetic OAuth code/state
+- [x] Redirect escape fixtures are rejected and synthetic OAuth code/state
       markers do not appear in request logs.
 - [ ] A documented disposable database is used; fresh and upgrade migration
       paths pass with pgvector and expected schema fields.
@@ -71,7 +81,7 @@ Historical audit results are a baseline, not a substitute for regression checks.
 - [ ] All three Dockerfiles build and configured startup/health checks pass.
 - [ ] The CI run for the reviewed revision passes every mandatory gate, including
       the build job; there are no skipped gates accepted as success.
-- [ ] CURRENT-STATE and RELEASE-BLOCKERS are updated from observed results, with
+- [x] CURRENT-STATE and RELEASE-BLOCKERS are updated from observed results, with
       remaining provider/context/credit/file/deployment work still open.
 
 This milestone validates authentication and transport using bounded test/mock
@@ -131,6 +141,8 @@ milestone as a production release.
 
 ## Open Questions
 
-Immediate inputs are the frontend/API domain-cookie arrangement and access to a
-safe Google test configuration and disposable database environment. Later policy
+The domain-cookie arrangement is resolved: configured app/API sibling hosts and
+shared session cookies, with API-host-only OAuth cookies. Immediate inputs are
+the actual owned domain, a safe Google test configuration, and a disposable
+database environment. Later policy
 decisions remain in [RELEASE-SCOPE — Open Questions](RELEASE-SCOPE.md#open-questions).
