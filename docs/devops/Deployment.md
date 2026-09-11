@@ -43,7 +43,7 @@ Google callbacks and API runtime origins must agree with that deployment.
 
 ## Deployment path
 
-- MVP: Vercel web; Railway, Render, Fly.io, or another managed container API/worker; managed PostgreSQL/Redis/object storage.
+- Current production: Vercel web; Render Docker web services for the API and AI Router; Supabase PostgreSQL Session Pooler; Render Key Value for ephemeral cache state. See [[Render]].
 - Growth: Vercel/CDN web; AWS ECS/Fargate or equivalent; RDS, managed Redis, S3, and queue.
 - Large scale: multi-region edge plus Kubernetes/mature containers only if justified; replicas, partitioning, regional storage, and disaster recovery.
 
@@ -73,10 +73,10 @@ requires a new ADR.
 
 ## Related notes
 
-[[System-Architecture]] · [[Docker]] · [[Observability]] · [[Security]] · [[Roadmap]]
+[[System-Architecture]] · [[Docker]] · [[Render]] · [[Observability]] · [[Security]] · [[Roadmap]]
 
 ## Open Questions
 
-- Which MVP container, PostgreSQL, Redis, object-storage, DNS, and telemetry vendors are selected?
+- Which owned parent domain will provide the required Vercel `app` and Render API `api` sibling hosts?
 - What regions, recovery objectives, backup schedule, and data residency constraints apply?
 - Does the chosen API host reliably support long-lived SSE and graceful deploy draining?

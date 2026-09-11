@@ -1,0 +1,106 @@
+# Render Blueprint for the production backend. Supabase remains the only
+# production PostgreSQL provider and is intentionally not declared here.
+services:
+  - type: web
+    name: omniroute-api
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: infrastructure/docker/api.Dockerfile
+    dockerContext: .
+    healthCheckPath: /v1/health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: '4000'
+      - key: API_HOST
+        value: 0.0.0.0
+      - key: API_PORT
+        value: '4000'
+      - key: LOG_LEVEL
+        value: info
+      - key: OTEL_SDK_DISABLED
+        value: 'true'
+      - key: OTEL_SERVICE_NAME
+        value: omniroute-api
+      - key: DAILY_FREE_CREDITS
+        value: '1000'
+      - key: PLATFORM_CREDITS_PER_USD
+        value: '1000000'
+      - key: AUTH_SESSION_TTL_HOURS
+        value: '24'
+      - key: AUTH_SESSION_ROTATION_MINUTES
+        value: '15'
+      # Provider adapters stay intentionally disabled until their credentials
+      # and reviewed registry entries are configured.
+      - key: AI_EXECUTION_PROVIDER
+        value: disabled
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: WEB_APP_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
+      # Production authentication requires api.<domain> and app.<domain> on an
+      # owned shared parent domain, so these cannot use Render's onrender.com
+      # external URL. See docs/devops/Render.md.
+      - key: API_PUBLIC_URL
+        sync: false
+      - key: AUTH_COOKIE_DOMAIN
+        sync: false
+      - key: AUTH_SESSION_SECRET
+        generateValue: true
+      - key: AI_ROUTER_INTERNAL_TOKEN
+        generateValue: true
+      - key: REDIS_URL
+        fromService:
+          name: omniroute-cache
+          type: keyvalue
+          property: connectionString
+      - key: AI_ROUTER_URL
+        fromService:
+          name: omniroute-ai-router
+          type: web
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - type: web
+    name: omniroute-ai-router
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: infrastructure/docker/ai-router.Dockerfile
+    dockerContext: .
+    healthCheckPath: /health/ready
+    envVars:
+      - key: PORT
+        value: '8001'
+      - key: AI_ROUTER_HOST
+        value: 0.0.0.0
+      - key: AI_ROUTER_PORT
+        value: '8001'
+      - key: AI_ROUTER_LOG_LEVEL
+        value: info
+      - key: AI_ROUTER_ENABLE_OPENAI
+        value: 'false'
+      - key: AI_ROUTER_ENABLE_ANTHROPIC
+        value: 'false'
+      - key: AI_ROUTER_ENABLE_GEMINI
+        value: 'false'
+      - key: AI_ROUTER_INTERNAL_TOKEN
+        fromService:
+          name: omniroute-api
+          type: web
+          envVarKey: AI_ROUTER_INTERNAL_TOKEN
+
+  - type: keyvalue
+    name: omniroute-cache
+    region: singapore
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: allkeys-lru
+    persistenceMode: off

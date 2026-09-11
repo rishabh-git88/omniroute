@@ -37,7 +37,7 @@ OmniRoute is a cross-model conversation workspace whose promise is: **your conve
 
 - [[Docker]] — local and production container conventions
 - [[CI-CD]] — release gates and migration discipline
-- [[Deployment]] — local, preview, staging, production, and growth path
+- [[Deployment]] and [[Render]] — deployment architecture and the Render/Supabase runbook
 
 ## Roadmap and decisions
 
