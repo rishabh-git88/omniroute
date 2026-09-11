@@ -4,7 +4,20 @@ import { httpOriginSchema, isProductionOrigin } from './http-origin.js';
 const environmentSchema = z.enum(['development', 'test', 'production']);
 
 const apiEnvironmentSchema = z.object({
-  AI_ROUTER_URL: z.url().default('http://localhost:8001'),
+  AI_ROUTER_URL: httpOriginSchema.default('http://localhost:8001'),
+  AI_EXECUTION_PROVIDER: z
+    .enum(['disabled', 'mock', 'openai'])
+    .default('disabled'),
+  AI_ROUTER_INTERNAL_TOKEN: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).optional(),
+  ),
+  AI_ROUTER_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(100)
+    .max(300_000)
+    .default(95_000),
   API_HOST: z.string().min(1).default('0.0.0.0'),
   API_PORT: z.coerce.number().int().positive().max(65_535).default(4000),
   CORS_ORIGIN: httpOriginSchema.default('http://localhost:3000'),
@@ -108,13 +121,31 @@ export class EnvironmentValidationError extends Error {
 }
 
 export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
-  const result = apiEnvironmentSchema.safeParse(source);
+  const result = apiEnvironmentSchema.safeParse({
+    ...source,
+    AI_EXECUTION_PROVIDER:
+      source.AI_EXECUTION_PROVIDER ??
+      (source.NODE_ENV === 'production' ? 'disabled' : 'mock'),
+  });
 
   if (!result.success) {
     const keys = result.error.issues.map((issue) => issue.path.join('.'));
     throw new EnvironmentValidationError(keys);
   }
 
+  if (
+    result.data.NODE_ENV === 'production' &&
+    result.data.AI_EXECUTION_PROVIDER === 'mock'
+  )
+    throw new EnvironmentValidationError(['AI_EXECUTION_PROVIDER']);
+  if (
+    result.data.AI_EXECUTION_PROVIDER === 'openai' &&
+    (!result.data.AI_ROUTER_INTERNAL_TOKEN || !source.AI_ROUTER_URL)
+  )
+    throw new EnvironmentValidationError([
+      'AI_ROUTER_INTERNAL_TOKEN',
+      'AI_ROUTER_URL',
+    ]);
   return result.data;
 }
 

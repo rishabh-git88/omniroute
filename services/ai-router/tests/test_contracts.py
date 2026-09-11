@@ -41,3 +41,49 @@ def test_canonical_request_rejects_unknown_provider() -> None:
                 "runId": str(uuid4()),
             }
         )
+
+
+def test_shared_fixtures_match_python_and_json_schema() -> None:
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    root = Path(__file__).resolve().parents[3] / "packages/provider-contracts"
+    schema = json.loads((root / "schemas/canonical-chat-request.schema.json").read_text())
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    cases = json.loads((root / "fixtures/canonical-requests.json").read_text())
+    for case in cases:
+        payload = case["request"]
+        assert validator.is_valid(payload) == case["valid"], case["name"]
+        try:
+            request = CanonicalChatRequest.model_validate(payload)
+        except ValidationError:
+            assert not case["valid"], case["name"]
+        else:
+            assert case["valid"], case["name"]
+            assert request.model_dump(mode="json", by_alias=True, exclude_none=True) == payload
+
+
+def test_execution_envelope_shared_fixtures() -> None:
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    from app.contracts import ProviderExecutionPlan
+
+    root = Path(__file__).resolve().parents[3] / "packages/provider-contracts"
+    validator = Draft202012Validator(
+        json.loads((root / "schemas/provider-execution-plan.schema.json").read_text()),
+        format_checker=FormatChecker(),
+    )
+    for case in json.loads((root / "fixtures/execution-plans.json").read_text()):
+        assert validator.is_valid(case["plan"]) == case["valid"], case["name"]
+        try:
+            plan = ProviderExecutionPlan.model_validate(case["plan"])
+        except ValidationError:
+            assert not case["valid"], case["name"]
+        else:
+            assert case["valid"], case["name"]
+            assert plan.model_dump(mode="json", by_alias=True, exclude_none=True) == case["plan"]

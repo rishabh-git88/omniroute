@@ -49,6 +49,41 @@ export class SemanticRetrievalService {
     `;
   }
 
+  public async retrieveSafely(
+    workspaceId: string,
+    query: string,
+    take = 3,
+  ): Promise<{
+    chunks: RetrievedChunk[];
+    status: 'semantic' | 'lexical' | 'unavailable' | 'empty';
+  }> {
+    try {
+      const chunks = await this.retrieve(workspaceId, query, take);
+      if (chunks.length) return { chunks, status: 'semantic' };
+    } catch {
+      /* Optional retrieval must not erase canonical history. */
+    }
+    try {
+      const chunks = await this.database.client.$transaction(
+        async (transaction) => {
+          await transaction.$executeRaw`SET LOCAL statement_timeout = '750ms'`;
+          return transaction.$queryRaw<RetrievedChunk[]>`
+        SELECT fc.id, fc.file_id AS "fileId", fc.content, 0::float8 AS score
+        FROM file_chunks fc JOIN files f ON f.id=fc.file_id
+        WHERE f.workspace_id=${workspaceId}::uuid AND f.deleted_at IS NULL
+          AND to_tsvector('simple',fc.content) @@ plainto_tsquery('simple',${query})
+        ORDER BY ts_rank(to_tsvector('simple',fc.content),plainto_tsquery('simple',${query})) DESC, fc.id
+        LIMIT ${Math.min(Math.max(take, 1), 12)}
+      `;
+        },
+        { maxWait: 250, timeout: 1500 },
+      );
+      return { chunks, status: chunks.length ? 'lexical' : 'empty' };
+    } catch {
+      return { chunks: [], status: 'unavailable' };
+    }
+  }
+
   public async retrieve(
     workspaceId: string,
     query: string,
@@ -56,7 +91,10 @@ export class SemanticRetrievalService {
   ): Promise<RetrievedChunk[]> {
     if (!query.trim()) return [];
     const vector = this.embeddings.vectorLiteral(this.embeddings.embed(query));
-    return this.database.client.$queryRaw<RetrievedChunk[]>`
+    return this.database.client.$transaction(
+      async (transaction) => {
+        await transaction.$executeRaw`SET LOCAL statement_timeout = '750ms'`;
+        return transaction.$queryRaw<RetrievedChunk[]>`
       SELECT fc.id, fc.file_id AS "fileId", fc.content,
              (1 - (e.embedding::vector(64) <=> ${vector}::vector(64)))::float8 AS score
       FROM embeddings e
@@ -70,8 +108,11 @@ export class SemanticRetrievalService {
         AND e.embedding IS NOT NULL
         AND f.workspace_id = ${workspaceId}::uuid
         AND f.deleted_at IS NULL
-      ORDER BY e.embedding::vector(64) <=> ${vector}::vector(64)
+      ORDER BY e.embedding::vector(64) <=> ${vector}::vector(64), fc.id
       LIMIT ${Math.min(Math.max(take, 1), 12)}
     `;
+      },
+      { maxWait: 250, timeout: 1500 },
+    );
   }
 }

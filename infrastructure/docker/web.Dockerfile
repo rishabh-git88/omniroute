@@ -7,6 +7,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 RUN corepack enable
+RUN pnpm config set store-dir /pnpm/store
 WORKDIR /workspace
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json eslint.config.mjs ./
@@ -15,7 +16,8 @@ COPY packages/config/package.json packages/config/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/ui/package.json packages/ui/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=omniroute-pnpm,target=/pnpm/store \
+  pnpm install --frozen-lockfile --network-concurrency=8 --fetch-timeout=120000
 
 COPY apps/web apps/web
 COPY packages/config packages/config

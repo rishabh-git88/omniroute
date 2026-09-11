@@ -1,0 +1,25 @@
+name: omniroute-integration
+
+services:
+  postgres-integration:
+    image: pgvector/pgvector:pg18-bookworm
+    environment:
+      POSTGRES_DB: omniroute_integration
+      POSTGRES_USER: integration_admin
+      POSTGRES_PASSWORD: integration-admin-only
+    ports:
+      - '127.0.0.1:${INTEGRATION_POSTGRES_PORT:-55432}:5432'
+    # Disposable storage, never the development postgres-data volume.
+    tmpfs:
+      - /var/lib/postgresql
+    volumes:
+      - ./infrastructure/postgres/integration-init.sql:/docker-entrypoint-initdb.d/001-integration.sql:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U integration_admin -d omniroute_integration',
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30

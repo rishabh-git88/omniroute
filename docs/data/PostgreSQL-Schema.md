@@ -88,6 +88,14 @@ Scope every query by workspace, audit sensitive state changes, encrypt in transi
 
 ## Related notes
 
+Milestone 2 verified both checked-in migrations on a fresh isolated PostgreSQL
+instance and rehearsed core-to-memory upgrade with retained synthetic data. It
+aligned the recognized development database after backup, without reset or
+rewriting either migration. Tests verify checksums, Prisma drift, pgvector and
+custom memory indexes; see [[Database-Verification]] and
+[[ADR-011-Isolated-Database-Verification]]. RDS version compatibility and
+production migration execution remain separate deployment gates.
+
 [[ADR-002-PostgreSQL]] · [[ADR-005-Core-Data-Model]] · [[Database-Diagram]] · [[Redis]] · [[Vector-Memory]] · [[Credits-Billing]] · [[CI-CD]]
 
 ## Open Questions

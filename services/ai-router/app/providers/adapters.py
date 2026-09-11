@@ -1,4 +1,5 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from typing import Any, Literal
 
 from app.contracts import NormalizedUsage, ProviderEvent, ProviderExecutionPlan, ProviderHealth
@@ -22,6 +23,8 @@ class StreamingAdapter(ProviderAdapter):
         async for event in self.stream(plan):
             if event.type == "content.delta":
                 content += event.text or ""
+            if event.type == "run.failed":
+                raise RuntimeError("Provider generation failed")
             if event.type == "usage.updated":
                 usage = NormalizedUsage(
                     input_tokens=event.input_tokens, output_tokens=event.output_tokens
@@ -41,25 +44,28 @@ class StreamingAdapter(ProviderAdapter):
     async def cancel(self, run_id: str) -> None:
         self._cancelled.add(run_id)
 
-    async def stream(self, plan: ProviderExecutionPlan) -> AsyncIterator[ProviderEvent]:
+    async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
         self._validate(plan)
         yield ProviderEvent(type="run.started", run_id=plan.request.run_id)
         try:
-            async for raw in self._transport.stream_sse(
-                self.api_url, self._headers(), self._payload(plan)
-            ):
-                if str(plan.request.run_id) in self._cancelled:
-                    self._cancelled.discard(str(plan.request.run_id))
-                    yield ProviderEvent(
-                        type="run.failed",
-                        run_id=plan.request.run_id,
-                        code="CANCELLED",
-                        message="Generation cancelled",
-                        retryable=False,
-                    )
-                    return
-                for event in self._normalize(raw, plan):
-                    yield event
+            async with aclosing(
+                self._transport.stream_sse(self.api_url, self._headers(), self._payload(plan))
+            ) as upstream:
+                async for raw in upstream:
+                    if str(plan.request.run_id) in self._cancelled:
+                        self._cancelled.discard(str(plan.request.run_id))
+                        yield ProviderEvent(
+                            type="run.failed",
+                            run_id=plan.request.run_id,
+                            code="CANCELLED",
+                            message="Generation cancelled",
+                            retryable=False,
+                        )
+                        return
+                    for event in self._normalize(raw, plan):
+                        yield event
+                        if event.type in {"run.completed", "run.failed"}:
+                            return
         except ProviderTransportError as error:
             yield ProviderEvent(
                 type="run.failed",
@@ -101,6 +107,7 @@ class OpenAIAdapter(StreamingAdapter):
             ],
             "max_output_tokens": plan.request.max_output_tokens,
             "stream": True,
+            "store": False,
         }
         if plan.request.temperature is not None:
             body["temperature"] = plan.request.temperature
@@ -120,8 +127,16 @@ class OpenAIAdapter(StreamingAdapter):
                     type="content.delta", run_id=plan.request.run_id, text=raw.get("delta", "")
                 )
             ]
-        if kind == "response.completed":
-            usage = self.usage(response.get("usage", {}))
+        if kind == "response.created":
+            return [
+                ProviderEvent(
+                    type="run.started",
+                    run_id=plan.request.run_id,
+                    provider_request_id=response.get("id"),
+                )
+            ]
+        if kind in {"response.completed", "response.incomplete"}:
+            usage = self.usage(response.get("usage") or {})
             return [
                 ProviderEvent(
                     type="usage.updated",
@@ -129,18 +144,32 @@ class OpenAIAdapter(StreamingAdapter):
                     **usage.model_dump(exclude_none=True),
                 ),
                 ProviderEvent(
-                    type="run.completed", run_id=plan.request.run_id, finish_reason="stop"
+                    type="run.completed",
+                    run_id=plan.request.run_id,
+                    finish_reason=(
+                        "stop"
+                        if kind == "response.completed"
+                        else "length"
+                        if (response.get("incomplete_details") or {}).get("reason")
+                        == "max_output_tokens"
+                        else "incomplete"
+                    ),
                 ),
             ]
-        if kind == "response.failed":
+        if kind in {"response.failed", "error"}:
             return [
+                ProviderEvent(
+                    type="usage.updated",
+                    run_id=plan.request.run_id,
+                    **self.usage(response.get("usage") or {}).model_dump(exclude_none=True),
+                ),
                 ProviderEvent(
                     type="run.failed",
                     run_id=plan.request.run_id,
                     code="OPENAI_ERROR",
                     message="OpenAI generation failed",
                     retryable=False,
-                )
+                ),
             ]
         return []
 

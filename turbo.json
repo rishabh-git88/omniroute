@@ -18,6 +18,14 @@
     },
     "typecheck": {
       "dependsOn": ["^build"]
+    },
+    "@omniroute/ai-router#test": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/provider-contracts/fixtures/**",
+        "$TURBO_ROOT$/packages/provider-contracts/schemas/**"
+      ]
     }
   }
 }

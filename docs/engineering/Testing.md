@@ -21,6 +21,14 @@ Keep deterministic contracts and invariants around nondeterministic provider API
 
 Use Vitest/Jest, Supertest, Playwright, and Testcontainers as appropriate. Live provider smoke tests are bounded and separate from deterministic CI.
 
+Database and API integration suites now require the guarded disposable target
+described in [[Database-Verification]]. Both environment URLs are validated
+before any override, actual server identity is checked before writes, and
+missing configuration fails rather than skipping suites. Fresh migration and
+retained-data upgrade checks are CI gates; see
+[[ADR-011-Isolated-Database-Verification]]. These executed tests cover their
+specific assertions, not every intended acceptance criterion below.
+
 ## MVP acceptance criteria
 
 - One prompt creates exactly one turn and three unique runs.

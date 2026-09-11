@@ -3,18 +3,14 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createDatabaseClient } from './database-client.js';
+import { verifiedIntegrationUrl } from './integration-safety.js';
 import type { PrismaService } from './prisma.service.js';
 import type { PrismaClient } from '../generated/prisma/client.js';
 import { CreditLedgerRepository } from '../usage/credit-ledger.repository.js';
 import { DeterministicEmbeddingService } from '../context/deterministic-embedding.service.js';
 import { SemanticRetrievalService } from '../context/semantic-retrieval.service.js';
 
-const connectionString = process.env.DATABASE_TEST_URL;
-if (!connectionString) {
-  throw new Error(
-    'DATABASE_TEST_URL is required for destructive database integration tests',
-  );
-}
+const connectionString = await verifiedIntegrationUrl();
 
 let database: PrismaClient;
 let ledger: CreditLedgerRepository;

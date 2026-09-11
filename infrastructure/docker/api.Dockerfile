@@ -4,6 +4,7 @@ ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 
 RUN corepack enable
+RUN pnpm config set store-dir /pnpm/store
 WORKDIR /workspace
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json tsconfig.base.json eslint.config.mjs ./
@@ -12,7 +13,8 @@ COPY packages/config/package.json packages/config/package.json
 COPY packages/provider-contracts/package.json packages/provider-contracts/package.json
 COPY packages/types/package.json packages/types/package.json
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=omniroute-pnpm,target=/pnpm/store \
+  pnpm install --frozen-lockfile --network-concurrency=8 --fetch-timeout=120000
 
 COPY apps/api apps/api
 COPY packages/config packages/config
@@ -20,7 +22,8 @@ COPY packages/provider-contracts packages/provider-contracts
 COPY packages/types packages/types
 
 RUN pnpm --filter @omniroute/api... build
-RUN pnpm --filter @omniroute/api deploy --prod /opt/omniroute-api
+RUN --mount=type=cache,id=omniroute-pnpm,target=/pnpm/store \
+  pnpm --filter @omniroute/api deploy --prod /opt/omniroute-api
 
 FROM node:24.20.0-bookworm-slim AS runtime
 

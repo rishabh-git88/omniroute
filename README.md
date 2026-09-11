@@ -62,7 +62,18 @@ pnpm db:migrate
 pnpm db:seed
 ```
 
-Database integration tests are destructive and therefore require the dedicated
-`DATABASE_TEST_URL` from `.env.example`. `pnpm db:test` migrates that database
-before running the suite. Never point `DATABASE_TEST_URL` at a development or
-production database.
+Database integration tests use the separate tmpfs instance in
+`compose.integration.yaml`, with a restricted role and marked disposable
+databases. `pnpm db:test` checks both environment URLs and the actual server
+identity before migrations or destructive fixtures. A development, production,
+unknown, or missing test target fails closed; an inherited development
+`DATABASE_URL` is rejected even when `DATABASE_TEST_URL` is safe. The legacy
+`omniroute_test` database is not used.
+
+Follow [Database Verification](docs/engineering/Database-Verification.md) for
+isolated setup, fresh/upgrade migration checks, reviewed registry seeds, and the
+complete release commands. Production web builds need an explicit valid API
+origin, for example `NEXT_PUBLIC_API_URL=https://api.ci.invalid pnpm build` for
+synthetic verification. The execution configuration, verification approach, and
+remaining limitations are documented in
+[Authenticated Single-Provider Execution](docs/decisions/ADR-013-Authenticated-Single-Provider-Execution.md).

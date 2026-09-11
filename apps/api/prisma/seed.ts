@@ -1,4 +1,6 @@
 import { createDatabaseClient } from '../src/database/database-client.js';
+import { developmentDatabaseUrl } from '../src/database/development-safety.js';
+import { seedProviderRegistry } from '../src/database/provider-seed.js';
 import {
   CreditTransactionStatus,
   CreditTransactionType,
@@ -6,9 +8,7 @@ import {
   RegistryRolloutState,
 } from '../src/generated/prisma/client.js';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString)
-  throw new Error('DATABASE_URL is required to seed the database');
+const connectionString = developmentDatabaseUrl(process.env);
 
 const database = createDatabaseClient(connectionString);
 
@@ -23,6 +23,7 @@ const fakeModels = [
 ] as const;
 
 async function seed(): Promise<void> {
+  await seedProviderRegistry(database);
   const user = await database.user.upsert({
     where: { email: 'developer@omniroute.local' },
     create: {
@@ -77,18 +78,6 @@ async function seed(): Promise<void> {
     },
     update: { displayName: 'OmniRoute Fake Provider', enabled: true },
   });
-  for (const provider of [
-    { key: 'openai', displayName: 'OpenAI' },
-    { key: 'anthropic', displayName: 'Anthropic' },
-    { key: 'gemini', displayName: 'Google Gemini' },
-  ]) {
-    await database.provider.upsert({
-      where: { key: provider.key },
-      create: { ...provider, enabled: false },
-      update: { displayName: provider.displayName },
-    });
-  }
-
   for (const modelSeed of fakeModels) {
     const model = await database.model.upsert({
       where: { modelKey: modelSeed.key },

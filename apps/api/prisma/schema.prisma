@@ -413,6 +413,7 @@ model ModelRun {
   registryEntryId    String                @map("registry_entry_id") @db.Uuid
   status             ModelRunStatus        @default(PENDING)
   providerRequestId  String?               @map("provider_request_id")
+  executionResult    Json?                 @map("execution_result") @db.JsonB
   attempt            Int                   @default(1)
   startedAt          DateTime?             @map("started_at") @db.Timestamptz(6)
   completedAt        DateTime?             @map("completed_at") @db.Timestamptz(6)
@@ -462,6 +463,7 @@ model ContextSnapshot {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   runId          String   @unique @map("run_id") @db.Uuid
   snapshotHash   String   @map("snapshot_hash")
+  payload        Json?    @db.JsonB
   summaryVersion Int?     @map("summary_version")
   sourceIds      Json     @map("source_ids") @db.JsonB
   tokenEstimate  Int      @map("token_estimate")

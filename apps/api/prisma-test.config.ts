@@ -1,4 +1,5 @@
-import { defineConfig, env } from 'prisma/config';
+import { defineConfig } from 'prisma/config';
+import { integrationDatabaseUrl } from './src/database/integration-safety.js';
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
@@ -6,6 +7,6 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_TEST_URL'),
+    url: integrationDatabaseUrl(process.env),
   },
 });

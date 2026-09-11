@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Literal
 from uuid import uuid4
 
@@ -61,7 +61,7 @@ class IntentionalFailureAdapter(ProviderAdapter):
     async def cancel(self, run_id: str) -> None:
         return None
 
-    async def stream(self, plan: ProviderExecutionPlan) -> AsyncIterator[ProviderEvent]:
+    async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
         yield ProviderEvent(type="run.started", run_id=plan.request.run_id)
         yield ProviderEvent(
             type="run.failed",
@@ -78,7 +78,7 @@ class SuccessfulFallbackAdapter(IntentionalFailureAdapter):
     async def health(self) -> ProviderHealth:
         return ProviderHealth(provider="anthropic", status="ready")
 
-    async def stream(self, plan: ProviderExecutionPlan) -> AsyncIterator[ProviderEvent]:
+    async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
         yield ProviderEvent(type="run.started", run_id=plan.request.run_id)
         yield ProviderEvent(type="content.delta", run_id=plan.request.run_id, text="recovered")
         yield ProviderEvent(type="run.completed", run_id=plan.request.run_id, finish_reason="stop")

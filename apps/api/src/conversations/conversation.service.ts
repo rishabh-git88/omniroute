@@ -1,3 +1,11 @@
+import { executionProvider } from '../providers/execution-gateway.js';
+import { providerIdSchema } from '@omniroute/provider-contracts';
+import { enforceBudget, modelBudget } from '../context/context-budget.js';
+import {
+  readFrozen,
+  snapshotData,
+  frozenBudget,
+} from '../context/frozen-context.js';
 import {
   BadRequestException,
   Injectable,
@@ -200,13 +208,45 @@ export class ConversationService {
       workspaceId,
       conversationId,
     );
+    if (
+      conversation.mode === ConversationMode.COMPARE &&
+      model.provider.key !== 'fake'
+    )
+      throw new BadRequestException(
+        'Real-provider comparisons are not enabled',
+      );
+    const candidates =
+      conversation.mode === ConversationMode.COMPARE
+        ? [
+            model,
+            ...(await this.registry.findEnabled())
+              .filter(
+                (entry) =>
+                  entry.provider.key === 'fake' &&
+                  entry.modelId !== model.modelId,
+              )
+              .filter(
+                (entry, index, all) =>
+                  all.findIndex((other) => other.modelId === entry.modelId) ===
+                  index,
+              ),
+          ].slice(0, 3)
+        : [model];
+    if (
+      conversation.mode === ConversationMode.COMPARE &&
+      candidates.length !== 3
+    )
+      throw new BadRequestException(
+        'Compare 3 requires three enabled mock models',
+      );
+    candidates.forEach((entry) => modelBudget(entry.capabilities));
     const requestGroup = await this.repository.createTurn({
       content,
       conversationId,
       idempotencyKey: command.idempotencyKey,
       mode: conversation.mode,
       ...(parentResponseId === undefined ? {} : { parentResponseId }),
-      registryEntryIds: [model.id],
+      registryEntryIds: candidates.map((entry) => entry.id),
       userId,
       workspaceId,
     });
@@ -217,6 +257,7 @@ export class ConversationService {
           include: {
             model: { select: { modelKey: true } },
             provider: { select: { key: true } },
+            registryEntry: true,
           },
         },
         requestGroup: {
@@ -230,35 +271,57 @@ export class ConversationService {
         : 'user_selected',
       turn.modelRuns.length,
     );
-    const context = await this.contextBuilder.build({
-      conversationId,
-      turnId: turn.id,
-      userId,
-      userRequest: content,
-      workspaceId,
-      ...(turn.requestGroup.routingDecision
-        ? { routingDecision: turn.requestGroup.routingDecision }
-        : {}),
-    });
+    const snapshots = await this.database.client.$transaction(
+      async (transaction) => {
+        await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${turn.id}, 0))`;
+        const prior = await transaction.contextSnapshot.findFirst({
+          where: { run: { turnId: turn.id } },
+          orderBy: { createdAt: 'asc' },
+        });
+        const context = prior
+          ? readFrozen(prior)
+          : await this.contextBuilder.build({
+              conversationId,
+              turnId: turn.id,
+              userId,
+              userRequest: content,
+              workspaceId,
+              maxInputTokens: Math.min(
+                ...turn.modelRuns.map(
+                  (run) =>
+                    modelBudget(run.registryEntry.capabilities).maxInputTokens,
+                ),
+              ),
+            });
+        const result = [];
+        for (const run of turn.modelRuns) {
+          const existing = await transaction.contextSnapshot.findUnique({
+            where: { runId: run.id },
+          });
+          result.push(
+            existing ??
+              (await transaction.contextSnapshot.create({
+                data: snapshotData(
+                  run.id,
+                  context,
+                  run.registryEntry.capabilities,
+                ),
+              })),
+          );
+        }
+        return result;
+      },
+      { timeout: 15000 },
+    );
     for (const run of turn.modelRuns) {
-      const snapshot = await this.database.client.contextSnapshot.upsert({
-        where: { runId: run.id },
-        create: {
-          runId: run.id,
-          snapshotHash: ConversationExecutionService.contextHash(
-            context.messages,
-          ),
-          sourceIds: context.sourceIds,
-          ...(context.summaryVersion === undefined
-            ? {}
-            : { summaryVersion: context.summaryVersion }),
-          tokenEstimate: context.tokenEstimate,
-        },
-        update: {},
-      });
+      if (!['PENDING', 'QUEUED', 'RESERVED'].includes(run.status)) continue;
+      const snapshot = snapshots.find((item) => item.runId === run.id)!;
+      const context = readFrozen(snapshot);
+      const budget = frozenBudget(snapshot);
+      enforceBudget(context, budget);
       await this.billing.reserveForRun({
         estimatedInputTokens: BigInt(context.tokenEstimate),
-        maxOutputTokens: 512n,
+        maxOutputTokens: BigInt(budget.maxOutputTokens),
         modelRunId: run.id,
         requestGroupId: requestGroup.id,
         userId,
@@ -270,9 +333,9 @@ export class ConversationService {
         request: {
           contextSnapshotId: snapshot.id,
           context,
-          maxOutputTokens: 512,
+          maxOutputTokens: budget.maxOutputTokens,
           modelKey: run.model.modelKey,
-          provider: run.provider.key === 'fake' ? 'fake' : 'fake',
+          provider: providerIdSchema.parse(run.provider.key),
           runId: run.id,
         },
         runId: run.id,
@@ -362,6 +425,14 @@ export class ConversationService {
       new Set(source.turn.modelRuns.map((run) => run.model.modelKey)),
       requestedModelKey,
     );
+    const original = await this.database.client.contextSnapshot.findUnique({
+      where: { runId: source.runId },
+    });
+    if (!original)
+      throw new BadRequestException('Response has no frozen context');
+    const context = readFrozen(original);
+    const budget = modelBudget(target.capabilities);
+    enforceBudget(context, budget);
     const alternative = await this.repository.createAlternativeRun({
       registryEntryId: target.id,
       responseId,
@@ -374,32 +445,12 @@ export class ConversationService {
         provider: { select: { key: true } },
       },
     });
-    const context = await this.contextBuilder.build({
-      conversationId: alternative.conversationId,
-      turnId: alternative.turnId,
-      userId: source.turn.requestGroup.userId,
-      userRequest: source.turn.userContent,
-      workspaceId,
-      ...(source.turn.requestGroup.routingDecision
-        ? { routingDecision: source.turn.requestGroup.routingDecision }
-        : {}),
-    });
     const snapshot = await this.database.client.contextSnapshot.create({
-      data: {
-        runId: run.id,
-        snapshotHash: ConversationExecutionService.contextHash(
-          context.messages,
-        ),
-        sourceIds: context.sourceIds,
-        ...(context.summaryVersion === undefined
-          ? {}
-          : { summaryVersion: context.summaryVersion }),
-        tokenEstimate: context.tokenEstimate,
-      },
+      data: snapshotData(run.id, context, target.capabilities),
     });
     await this.billing.reserveForRun({
       estimatedInputTokens: BigInt(context.tokenEstimate),
-      maxOutputTokens: 512n,
+      maxOutputTokens: BigInt(budget.maxOutputTokens),
       modelRunId: run.id,
       requestGroupId: alternative.requestGroupId,
       userId: source.turn.requestGroup.userId,
@@ -411,9 +462,9 @@ export class ConversationService {
       request: {
         contextSnapshotId: snapshot.id,
         context,
-        maxOutputTokens: 512,
+        maxOutputTokens: budget.maxOutputTokens,
         modelKey: run.model.modelKey,
-        provider: run.provider.key === 'fake' ? 'fake' : 'fake',
+        provider: providerIdSchema.parse(run.provider.key),
         runId: run.id,
       },
       runId: run.id,
@@ -462,7 +513,11 @@ export class ConversationService {
   public async requestGroupForWorkspace(workspaceId: string, groupId: string) {
     const group = await this.database.client.requestGroup.findFirst({
       where: { id: groupId, workspaceId, conversation: { deletedAt: null } },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        modelRuns: { select: { id: true, status: true } },
+      },
     });
     if (!group) throw new NotFoundException('Request group not found');
     return group;
@@ -470,13 +525,15 @@ export class ConversationService {
 
   public async models() {
     const models = await this.registry.findEnabled();
-    return models.map((entry) => ({
-      capabilities: entry.capabilities,
-      displayName: entry.model.displayName,
-      modelKey: entry.model.modelKey,
-      provider: entry.provider,
-      registryVersion: entry.registryVersion,
-    }));
+    return models
+      .filter((entry) => entry.provider.key === executionProvider())
+      .map((entry) => ({
+        capabilities: entry.capabilities,
+        displayName: entry.model.displayName,
+        modelKey: entry.model.modelKey,
+        provider: entry.provider,
+        registryVersion: entry.registryVersion,
+      }));
   }
 
   public async recordRoutingDecision(
@@ -519,12 +576,13 @@ export class ConversationService {
     const model = modelKey
       ? models.find(
           (entry) =>
-            entry.model.modelKey === modelKey && entry.provider.key === 'fake',
+            entry.model.modelKey === modelKey &&
+            entry.provider.key === executionProvider(),
         )
-      : (models.find((entry) => entry.provider.key === 'fake') ?? models[0]);
+      : models.find((entry) => entry.provider.key === executionProvider());
     if (!model) {
       throw new BadRequestException(
-        'Select an enabled mock model; external providers are not configured',
+        'Select an enabled model for the configured execution provider',
       );
     }
     return model;
@@ -536,6 +594,10 @@ export class ConversationService {
     requestedModelKey?: string,
   ) {
     const models = await this.registry.findEnabled();
+    if (executionProvider() !== 'fake')
+      throw new BadRequestException(
+        'Real-provider alternatives are not enabled',
+      );
     const candidates = models.filter(
       (entry) =>
         entry.provider.key === 'fake' &&

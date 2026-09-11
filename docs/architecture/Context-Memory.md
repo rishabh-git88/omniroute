@@ -61,26 +61,24 @@ Use lexical search first, pgvector only when justified, bounded token budgets, v
 
 Recent turns are verbatim within budget. Structured summaries record decisions, constraints, open tasks, entities, and artifact references. User-approved pinned facts outrank inferred durable memory.
 
-For the MVP, the NestJS `ContextBuilder` walks from the new turn's
-`parent_response_id` to the root and includes only that selected branch as
-canonical user/assistant messages. It layers workspace rules, user preferences,
-a versioned deterministic conversation summary when history exceeds the recent
-window, and up to three workspace-scoped pgvector file chunks. It returns a
-provider-neutral `ContextBundle` containing canonical messages, provenance IDs,
-summary version, and a token estimate. Every provider adapter consumes that
-bundle through `CanonicalChatRequest.context`.
+The Context Builder follows persisted parent-response links in user/assistant
+order and records hashes and inclusion decisions for the exact source records.
+Owner and conversation restrictions both apply to memories. Required rules and
+the current prompt must fit; old history is omitted only in whole pairs, with
+optional preferences and retrieval bounded by the remaining model allowance.
+Stored summaries are excluded until their branch provenance can be validated.
 
-Text uploads are synchronously normalized and chunked for the MVP. A local,
-deterministic 64-dimensional embedding keeps development credentials-free; it
-is an embedding adapter boundary rather than a production-quality embedding
-claim. PostgreSQL stores chunks, embedding provenance, vectors, and snapshot
-metadata; raw object storage and background extraction remain deferred.
+Snapshots now persist the complete canonical bundle and budget policy, protected
+against updates by PostgreSQL. Compare 3 uses one frozen bundle fitted to the
+smallest selected input budget; Try Another AI reuses it without live retrieval.
+Legacy metadata-only snapshots cannot reconstruct input and fail explicitly for
+alternatives. The executor reloads the durable payload before calling the mock.
 
-“Try Another AI” reuses the same turn and therefore the exact same canonical
-history as the initial response. Its alternative `model_run` receives its own
-snapshot row, but an alternative response is excluded from future context until
-the user selects it. Selection updates `conversations.active_head_id`; the
-alternative is retained for comparison and routing evaluation.
+Semantic retrieval falls back to scoped lexical search, then a recorded degraded
+result, with bounded database queries and deterministic tie-breaking. See
+[[ADR-012-Frozen-Canonical-Context]] for the budget, provenance and compatibility
+contract. Local deterministic embeddings remain a development implementation;
+this work does not connect real providers or implement S3/PDF ingestion.
 
 ## Related notes
 

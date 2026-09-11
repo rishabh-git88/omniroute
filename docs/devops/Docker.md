@@ -37,12 +37,16 @@ Keep API and worker images/process roles separately scalable even if built from 
 
 Image definitions live under `infrastructure/docker/`; local database initialization lives under `infrastructure/postgres/init/`. Application containers are opt-in through the Compose `application` profile.
 
-The PostgreSQL init scripts enable pgvector and create a dedicated
-`omniroute_test` database on a fresh volume. Prisma migrations remain the owner
-of application tables and also enable pgvector idempotently, so existing
-databases do not depend on init-script replay. Run `pnpm db:migrate` and
-`pnpm db:seed` for local development. Database integration tests require
-`DATABASE_TEST_URL`; `pnpm db:test` migrates that database before testing.
+The development PostgreSQL init scripts enable pgvector and retain the legacy
+`omniroute_test` creation on a fresh volume. That database is no longer accepted
+by integration tests. Prisma migrations own application tables; development
+migrations and seeds require an explicitly configured local target.
+
+`compose.integration.yaml` creates a separate tmpfs PostgreSQL project on
+loopback port 55432 with a restricted role and marked disposable databases. It
+does not mount the development volume. `pnpm db:test` verifies both URL and
+server identity before migration or truncation. Upgrade verification uses its
+own fresh database and refuses reset. See [[Database-Verification]].
 
 All three runtime images are multi-stage, run as the unprivileged `omniroute`
 user, and contain image-level readiness health checks. `.dockerignore` keeps
@@ -50,6 +54,14 @@ local secrets, build output, dependency directories, and local database data
 out of the image context. `compose.yaml` remains the local development
 environment: dependencies start by default; `--profile application` adds the
 API, AI Router, and web images.
+
+`scripts/verify-images.sh` builds all images and checks isolated startup using
+synthetic configuration, no published ports, and no database mounts. It cleans
+up only its own temporary containers. API startup checks liveness without
+backing services; this is not an API readiness or deployed-system test. JS builds
+use a shared BuildKit pnpm download cache, frozen installation, bounded download
+concurrency, and an explicit configured web origin. Nested environment files are
+excluded from the Docker context.
 
 ## Related notes
 

@@ -1,14 +1,15 @@
 from app.config import Settings
 from app.contracts import ProviderExecutionPlan, ProviderHealth
 from app.providers.adapters import AnthropicAdapter, GeminiAdapter, OpenAIAdapter
-from app.providers.base import ProviderAdapter, ProviderTransport, UrllibTransport
+from app.providers.base import ProviderAdapter, ProviderTransport
+from app.providers.http_transport import HttpTransport
 
 
 class ProviderRegistry:
     """Creates only individually enabled adapters and never returns credentials to callers."""
 
     def __init__(self, settings: Settings, transport: ProviderTransport | None = None) -> None:
-        http = transport or UrllibTransport()
+        http = transport or HttpTransport()
         self._adapters: dict[str, ProviderAdapter] = {
             "openai": OpenAIAdapter(
                 enabled=settings.enable_openai, api_key=settings.openai_api_key, transport=http

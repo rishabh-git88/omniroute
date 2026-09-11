@@ -1,3 +1,5 @@
+import { AiRouterClient } from '../providers/ai-router.client.js';
+import { ExecutionGateway } from '../providers/execution-gateway.js';
 import { Module } from '@nestjs/common';
 
 import { PersistenceModule } from '../persistence.module.js';
@@ -19,6 +21,8 @@ import { StreamEventHub } from './stream-event-hub.js';
     ConversationExecutionService,
     ConversationService,
     MockProvider,
+    AiRouterClient,
+    ExecutionGateway,
     StreamEventHub,
   ],
 })

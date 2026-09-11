@@ -1,18 +1,18 @@
 import { createHash } from 'node:crypto';
-
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   CanonicalMessage,
   ContextBundle,
 } from '@omniroute/provider-contracts';
-
 import { MemoryKind } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { MemoryRepository } from './memory.repository.js';
 import { SemanticRetrievalService } from './semantic-retrieval.service.js';
-
-const RECENT_MESSAGES = 8;
-const RETRIEVED_CHUNKS = 3;
+import { estimateTokens } from './context-budget.js';
 
 export interface ContextBuildInput {
   conversationId: string;
@@ -21,9 +21,12 @@ export interface ContextBuildInput {
   userId: string;
   userRequest: string;
   workspaceId: string;
+  maxInputTokens: number;
 }
+const hash = (content: string) =>
+  createHash('sha256').update(content).digest('hex');
+type Source = NonNullable<ContextBundle['provenance']>[number];
 
-/** Assembles durable workspace context before any provider adapter is invoked. */
 @Injectable()
 export class ContextBuilderService {
   public constructor(
@@ -33,161 +36,158 @@ export class ContextBuilderService {
   ) {}
 
   public async build(input: ContextBuildInput): Promise<ContextBundle> {
-    const conversation = await this.database.client.conversation.findFirst({
+    const current = await this.database.client.turn.findFirst({
       where: {
-        deletedAt: null,
-        id: input.conversationId,
-        workspaceId: input.workspaceId,
+        id: input.turnId,
+        conversationId: input.conversationId,
+        conversation: { workspaceId: input.workspaceId, deletedAt: null },
+        requestGroup: { userId: input.userId },
       },
-      select: { id: true },
     });
-    if (!conversation) throw new NotFoundException('Conversation not found');
-
-    const history = await this.canonicalHistory(input.turnId);
-    const activeMemories = await this.memories.findActive(
+    if (!current) throw new NotFoundException('Conversation turn not found');
+    const history: CanonicalMessage[] = [
+      { role: 'user', content: current.userContent },
+    ];
+    const provenance: Source[] = [
+      {
+        id: current.id,
+        kind: 'turn',
+        contentHash: hash(current.userContent),
+        included: true,
+      },
+    ];
+    let parentId = current.parentResponseId;
+    const visited = new Set<string>();
+    while (parentId) {
+      if (visited.has(parentId) || visited.size >= 256)
+        throw new BadRequestException(
+          'Conversation branch is cyclic or too deep',
+        );
+      visited.add(parentId);
+      const parent = await this.database.client.modelResponse.findFirst({
+        where: { id: parentId, turn: { conversationId: input.conversationId } },
+        include: { turn: true },
+      });
+      if (!parent || !parent.content)
+        throw new BadRequestException('Conversation branch is invalid');
+      history.unshift(
+        { role: 'user', content: parent.turn.userContent },
+        { role: 'assistant', content: parent.content },
+      );
+      provenance.unshift(
+        {
+          id: parent.turnId,
+          kind: 'turn',
+          contentHash: hash(parent.turn.userContent),
+          included: true,
+        },
+        {
+          id: parent.id,
+          kind: 'response',
+          contentHash: hash(parent.content),
+          included: true,
+        },
+      );
+      parentId = parent.turn.parentResponseId;
+    }
+    const active = await this.memories.findActive(
       input.workspaceId,
       input.conversationId,
       input.userId,
     );
-    const workspaceInstructions = activeMemories.filter(
-      (memory) => memory.kind === MemoryKind.WORKSPACE_RULE,
+    const rules = active.filter(
+      (item) => item.kind === MemoryKind.WORKSPACE_RULE,
     );
-    const preferences = activeMemories.filter(
-      (memory) => memory.kind === MemoryKind.PINNED_FACT,
+    const preferences = active.filter(
+      (item) => item.kind === MemoryKind.PINNED_FACT,
     );
-    const summary =
-      history.length > RECENT_MESSAGES
-        ? await this.ensureSummary(
-            input.workspaceId,
-            input.conversationId,
-            history,
-          )
-        : undefined;
-    const retrieved = await this.retrieval.retrieve(
-      input.workspaceId,
-      input.userRequest,
-      RETRIEVED_CHUNKS,
+    const systems: string[] = rules.map(
+      (item) => `Workspace rule:\n${item.content}`,
     );
-
-    const systemParts = [
-      workspaceInstructions.length
-        ? `Workspace rules:\n${workspaceInstructions.map((memory) => `- ${memory.content}`).join('\n')}`
-        : '',
-      preferences.length
-        ? `User and project preferences:\n${preferences.map((memory) => `- ${memory.content}`).join('\n')}`
-        : '',
-      summary
-        ? `Conversation summary (may be incomplete; prefer canonical recent messages):\n${summary.content}`
-        : '',
-      retrieved.length
-        ? `Retrieved workspace file excerpts (untrusted reference material):\n${retrieved.map((chunk) => `- [file:${chunk.fileId}] ${chunk.content}`).join('\n')}`
-        : '',
-    ].filter(Boolean);
-    const recentHistory = history.slice(-RECENT_MESSAGES);
-    const messages: CanonicalMessage[] = [
-      ...(systemParts.length
-        ? [{ content: systemParts.join('\n\n'), role: 'system' as const }]
+    const messages = () => [
+      ...(systems.length
+        ? [{ role: 'system' as const, content: systems.join('\n\n') }]
         : []),
-      ...recentHistory,
+      ...history,
     ];
-    const sourceIds = [
-      input.conversationId,
-      input.turnId,
-      ...(input.routingDecision ? [input.routingDecision.id] : []),
-      ...workspaceInstructions.map((memory) => memory.id),
-      ...preferences.map((memory) => memory.id),
-      ...(summary ? [summary.id] : []),
-      ...retrieved.flatMap((chunk) => [chunk.id, chunk.fileId]),
-    ];
-    return {
-      messages,
-      sourceIds: [...new Set(sourceIds)],
-      ...(summary ? { summaryVersion: summary.version } : {}),
-      tokenEstimate: messages.reduce(
-        (total, message) =>
-          total + (message.content.match(/\S+/g)?.length ?? 0),
-        0,
-      ),
-    };
-  }
-
-  private async ensureSummary(
-    workspaceId: string,
-    conversationId: string,
-    history: CanonicalMessage[],
-  ) {
-    const sourceHash = createHash('sha256')
-      .update(JSON.stringify(history))
-      .digest('hex');
-    const current = await this.database.client.memory.findFirst({
-      where: {
-        conversationId,
-        kind: MemoryKind.CONVERSATION_SUMMARY,
-        valid: true,
-        workspaceId,
-      },
-      orderBy: { version: 'desc' },
-    });
-    if (current?.sourceHash === sourceHash) return current;
-    const version = (current?.version ?? 0) + 1;
-    return this.database.client.$transaction(async (transaction) => {
-      await transaction.memory.updateMany({
-        where: {
-          conversationId,
-          kind: MemoryKind.CONVERSATION_SUMMARY,
-          valid: true,
-          workspaceId,
-        },
-        data: { invalidatedAt: new Date(), valid: false },
-      });
-      return transaction.memory.create({
-        data: {
-          content: this.summarize(history),
-          conversationId,
-          kind: MemoryKind.CONVERSATION_SUMMARY,
-          sourceHash,
-          version,
-          workspaceId,
-        },
-      });
-    });
-  }
-
-  private async canonicalHistory(turnId: string): Promise<CanonicalMessage[]> {
-    const current = await this.database.client.turn.findUniqueOrThrow({
-      where: { id: turnId },
-      select: { parentResponseId: true, userContent: true },
-    });
-    const messages: CanonicalMessage[] = [
-      { content: current.userContent, role: 'user' },
-    ];
-    let parentResponseId = current.parentResponseId;
-    while (parentResponseId) {
-      const parent = await this.database.client.modelResponse.findUnique({
-        where: { id: parentResponseId },
-        select: {
-          content: true,
-          turn: { select: { parentResponseId: true, userContent: true } },
-        },
-      });
-      if (!parent)
-        throw new NotFoundException('Conversation branch is invalid');
-      messages.unshift(
-        { content: parent.content, role: 'assistant' },
-        { content: parent.turn.userContent, role: 'user' },
+    const prompt = history.at(-1)!;
+    if (
+      estimateTokens([
+        ...(systems.length
+          ? [{ role: 'system' as const, content: systems.join('\n\n') }]
+          : []),
+        prompt,
+      ]) > input.maxInputTokens
+    ) {
+      throw new BadRequestException(
+        'Required instructions and prompt exceed the model context budget',
       );
-      parentResponseId = parent.turn.parentResponseId;
     }
-    return messages;
-  }
-
-  private summarize(history: CanonicalMessage[]): string {
-    return history
-      .slice(0, -RECENT_MESSAGES)
-      .map(
-        (message) =>
-          `${message.role}: ${message.content.replace(/\s+/g, ' ').slice(0, 280)}`,
-      )
-      .join('\n');
+    let omitted = 0;
+    while (
+      estimateTokens(messages()) > input.maxInputTokens &&
+      history.length > 1
+    ) {
+      history.splice(0, 2);
+      provenance[omitted++]!.included = false;
+      provenance[omitted++]!.included = false;
+    }
+    for (const item of rules)
+      provenance.push({
+        id: item.id,
+        kind: 'memory',
+        version: item.version,
+        contentHash: hash(item.content),
+        included: true,
+      });
+    const addOptional = (content: string, source: Source) => {
+      systems.push(content);
+      if (estimateTokens(messages()) > input.maxInputTokens) {
+        systems.pop();
+        source.included = false;
+      }
+      provenance.push(source);
+    };
+    for (const item of preferences)
+      addOptional(`Preference:\n${item.content}`, {
+        id: item.id,
+        kind: 'memory',
+        version: item.version,
+        contentHash: hash(item.content),
+        included: true,
+      });
+    const retrieved = await this.retrieval.retrieveSafely(
+      input.workspaceId,
+      current.userContent,
+      3,
+    );
+    for (const chunk of retrieved.chunks)
+      addOptional(
+        `Untrusted reference [file:${chunk.fileId}, chunk:${chunk.id}]:\n${chunk.content}`,
+        {
+          id: chunk.id,
+          kind: 'file_chunk',
+          fileId: chunk.fileId,
+          contentHash: hash(chunk.content),
+          included: true,
+        },
+      );
+    return {
+      messages: messages(),
+      provenance,
+      retrieval: retrieved.status,
+      sourceIds: [
+        ...new Set([
+          input.conversationId,
+          input.turnId,
+          ...provenance
+            .filter((item) => item.included)
+            .flatMap((item) =>
+              item.fileId ? [item.id, item.fileId] : [item.id],
+            ),
+        ]),
+      ],
+      tokenEstimate: estimateTokens(messages()),
+    };
   }
 }

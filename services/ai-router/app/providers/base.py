@@ -1,7 +1,7 @@
 import asyncio
 import json
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 from urllib.error import HTTPError, URLError
@@ -22,7 +22,7 @@ class ProviderTransport(Protocol):
 
     def stream_sse(
         self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]: ...
+    ) -> AsyncGenerator[dict[str, Any], None]: ...
 
 
 class UrllibTransport:
@@ -35,7 +35,7 @@ class UrllibTransport:
 
     def stream_sse(
         self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         return self._stream(url, headers, body)
 
     @staticmethod
@@ -51,7 +51,7 @@ class UrllibTransport:
 
     async def _stream(
         self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         request = Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
         try:
             response = await asyncio.to_thread(urlopen, request, timeout=90)  # noqa: S310
@@ -84,7 +84,7 @@ class ProviderAdapter(ABC):
     async def generate(self, plan: ProviderExecutionPlan) -> tuple[str, NormalizedUsage]: ...
 
     @abstractmethod
-    def stream(self, plan: ProviderExecutionPlan) -> AsyncIterator[ProviderEvent]: ...
+    def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]: ...
 
     @abstractmethod
     async def capabilities(self, plan: ProviderExecutionPlan) -> dict[str, object]: ...

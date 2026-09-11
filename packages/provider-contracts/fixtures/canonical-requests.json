@@ -1,0 +1,452 @@
+[
+  {
+    "name": "minimal",
+    "valid": true,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "unknown field",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "extra": true
+    }
+  },
+  {
+    "name": "empty content",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": ""
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "unknown role",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "tool",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "coerced integer",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": "512",
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "boolean integer",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": true
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "null temperature",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "temperature": null
+    }
+  },
+  {
+    "name": "invalid uuid",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "bad"
+    }
+  },
+  {
+    "name": "context extra",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64,
+        "other": 0
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "negative estimate",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": -1
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "missing provenance ids",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "legacy top level messages",
+    "valid": false,
+    "request": {
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "messages": [
+        {
+          "role": "user",
+          "content": "Hello 漢字"
+        }
+      ]
+    }
+  },
+  {
+    "name": "integer JSON float",
+    "valid": true,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512.0,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "unsafe integer",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 9007199254740992
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "boolean temperature",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "temperature": true
+    }
+  },
+  {
+    "name": "UUID variant",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "00000000-0000-0000-0000-000000000001"
+    }
+  },
+  {
+    "name": "snake case wire key",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "context_snapshot_id": "019cd3a5-8d1d-7000-8000-000000000001"
+    }
+  },
+  {
+    "name": "rich provenance",
+    "valid": true,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64,
+        "retrieval": "unavailable",
+        "provenance": [
+          {
+            "id": "019cd3a5-8d1d-7000-8000-000000000002",
+            "kind": "memory",
+            "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "included": false,
+            "version": 1
+          }
+        ]
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "UUID URN",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "urn:uuid:019cd3a5-8d1d-7000-8000-000000000002"
+    }
+  },
+  {
+    "name": "unhyphenated UUID",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "019cd3a58d1d70008000000000000002"
+    }
+  },
+  {
+    "name": "uppercase max UUID",
+    "valid": false,
+    "request": {
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello 漢字"
+          }
+        ],
+        "sourceIds": [],
+        "tokenEstimate": 64
+      },
+      "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000001",
+      "maxOutputTokens": 512,
+      "modelKey": "fake:test",
+      "provider": "fake",
+      "runId": "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
+    }
+  }
+]

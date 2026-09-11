@@ -97,23 +97,18 @@ group's `routing_decisions`; FastAPI remains database-free. Missing required
 capabilities or a healthy eligible model fails closed. Automatic fallback
 execution still requires user opt-in.
 
-### Resilient fallback
+### Connected execution boundary
 
-`/providers/fallback-stream` accepts a primary and ordered secondary execution
-plans that NestJS has already authorized. It classifies timeout, HTTP, rate
-limit, unavailable-model/provider, and pre-output streaming failures. It may
-move to the next plan only when no useful content was emitted, fallback was
-opted into, and every plan references the exact same immutable context snapshot.
-The SSE stream emits `fallback.started` with the failure class and replacement
-provider/model, so the main application can display and persist the transition.
+NestJS sends the immutable canonical request and registry envelope to authenticated
+`POST /providers/stream`. The current connected path executes one selected OpenAI
+model, preserving canonical context and capturing normalized terminal results.
+See [[ADR-013-Authenticated-Single-Provider-Execution]].
 
-An explicit user-selected model is never silently replaced: it requires both
-fallback opt-in and a disclosure acknowledgement. Any output before failure is
-kept as partial/billable output and ends automatic fallback. Each plan has a
-distinct pre-created model run and credit reservation; the router never creates,
-charges, or reconciles a reservation. NestJS stores the initial decision,
-failure class, fallback decision, selected final candidate, and normalized usage
-in the request group's routing snapshot, runs, and immutable usage records.
+The existing fallback engine remains isolated contract-tested logic. Its HTTP
+execution endpoint is authenticated and returns 501 while bounded single-provider
+execution is being established. Real alternatives and Compare 3 are not enabled
+in this milestone. Automatic routing scores are still separate from the connected
+user-selected execution path.
 
 ## Related notes
 

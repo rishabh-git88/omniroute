@@ -281,14 +281,26 @@ export class ConversationStreamController {
       unsubscribe();
       stream.end();
     };
+    const pending = new Set(
+      group.modelRuns
+        .filter(
+          (run) => !['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status),
+        )
+        .map((run) => run.id),
+    );
     const latestId = this.events.history(groupId).at(-1)?.id ?? 0;
     unsubscribe = this.events.subscribe(groupId, (event) => {
       if (event.id <= latestId || closed) return;
       writeEvent(stream, event);
-      if (isTerminal(event)) close();
+      if (isTerminal(event)) pending.delete(String(event.data.runId));
+      if (pending.size === 0) close();
     });
-    for (const event of this.events.history(groupId)) writeEvent(stream, event);
+    for (const event of this.events.history(groupId)) {
+      writeEvent(stream, event);
+      if (isTerminal(event)) pending.delete(String(event.data.runId));
+    }
     if (
+      pending.size === 0 ||
       group.status === 'COMPLETED' ||
       group.status === 'CANCELLED' ||
       group.status === 'FAILED'

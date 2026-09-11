@@ -76,11 +76,12 @@ capabilities, and pricing versions arrive in the immutable Model Registry
 snapshot supplied with the run plan; adapters contain no pricing or model
 capability table.
 
-Each real adapter is disabled by default. Local development enables it only
-with `AI_ROUTER_ENABLE_OPENAI`, `AI_ROUTER_ENABLE_ANTHROPIC`, or
-`AI_ROUTER_ENABLE_GEMINI` plus the corresponding server-only environment key.
-The router never logs, serializes, or returns a credential. Mock transport
-contract tests cover normalization without a provider account or network call.
+The first connected execution milestone enables only OpenAI Responses through
+NestJS → authenticated FastAPI SSE. See
+[[ADR-013-Authenticated-Single-Provider-Execution]] for configuration, output
+limits, timeout/cancellation, usage reconciliation, and verification boundaries.
+Anthropic and Gemini adapters remain contract-tested source, not enabled product
+execution paths. MockProvider is restricted to development/test.
 
 ## Related notes
 

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import uuid4
 
@@ -24,7 +24,7 @@ class MockTransport:
 
     async def stream_sse(
         self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         self.requests.append((url, headers, body))
         for event in self.events:
             yield event

@@ -34,11 +34,23 @@ integration tests. The final build job depends on all gates, validates the
 Compose configuration, builds every deployable, and validates all production
 Dockerfiles.
 
-The integration job applies Prisma migrations to an isolated `omniroute_test`
-PostgreSQL service, verifies migration status, then executes integration tests.
-Production deployment is intentionally not encoded until a container registry,
-hosting provider, deployment credentials, approval environment, and rollback
-owner are selected.
+Frontend and API test jobs run through Turbo's dependency graph so exported
+shared packages are built first. The build environment explicitly supplies the
+synthetic `NEXT_PUBLIC_API_URL=https://api.ci.invalid`; it uses no production
+credentials.
+
+The integration job bootstraps restricted, marked `omniroute_integration` and
+`omniroute_integration_upgrade` databases. It builds API workspace dependencies,
+rehearses the two-migration upgrade with retained data, validates Prisma and
+migration checksums/catalog objects/drift, and executes all database suites.
+See [[Database-Verification]] and [[ADR-011-Isolated-Database-Verification]] for
+the fail-closed targeting rules. The old `omniroute_test` is not used.
+
+The build job runs `scripts/verify-images.sh` for image builds and isolated,
+synthetically configured non-root startup checks. Source changes to CI are not
+evidence that a GitHub-hosted run passed; the reviewed revision still needs its
+own green run. The fixed release architecture uses Vercel and AWS ECS/Fargate
+with GitHub OIDC; provisioning and CD are later gates, outside Milestone 2.
 
 ## Responsibilities
 

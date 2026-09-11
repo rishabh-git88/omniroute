@@ -16,6 +16,7 @@ env:
   NODE_VERSION: 24.20.0
   PNPM_VERSION: 12.3.4
   PYTHON_VERSION: '3.14'
+  NEXT_PUBLIC_API_URL: https://api.ci.invalid
 
 jobs:
   lint:
@@ -85,7 +86,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @omniroute/web test
+      - run: pnpm exec turbo run test --filter=@omniroute/web
 
   backend-tests:
     name: Backend unit tests
@@ -101,7 +102,9 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @omniroute/api test
+      - run: pnpm exec turbo run test --filter=@omniroute/api
+      - name: Validate Prisma schema
+        run: pnpm --filter @omniroute/api db:validate
 
   python-tests:
     name: AI Router tests
@@ -126,18 +129,19 @@ jobs:
       postgres:
         image: pgvector/pgvector:pg18-bookworm
         env:
-          POSTGRES_DB: omniroute_test
-          POSTGRES_PASSWORD: omniroute
-          POSTGRES_USER: omniroute
+          POSTGRES_DB: omniroute_integration
+          POSTGRES_PASSWORD: integration-admin-only
+          POSTGRES_USER: integration_admin
         options: >-
-          --health-cmd "pg_isready -U omniroute -d omniroute_test"
+          --health-cmd "pg_isready -U integration_admin -d omniroute_integration"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
         ports:
           - 5432:5432
     env:
-      DATABASE_TEST_URL: postgresql://omniroute:omniroute@localhost:5432/omniroute_test
+      NODE_ENV: test
+      DATABASE_TEST_URL: postgresql://omniroute_integration:integration-only@127.0.0.1:5432/omniroute_integration
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -148,11 +152,22 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Apply and verify migrations
-        run: |
-          pnpm --filter @omniroute/api exec prisma migrate deploy --config prisma-test.config.ts
-          pnpm --filter @omniroute/api exec prisma migrate status --config prisma-test.config.ts
-      - name: Run database integration tests
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --project services/ai-router --all-groups --frozen
+      - name: Bootstrap isolated non-superuser databases
+        run: docker exec -i "${{ job.services.postgres.id }}" psql -U integration_admin -d omniroute_integration -v ON_ERROR_STOP=1 < infrastructure/postgres/integration-init.sql
+      - name: Build API workspace dependencies
+        run: pnpm --filter '@omniroute/api^...' build
+      - name: Rehearse core-to-memory upgrade with retained fixture data
+        env:
+          DATABASE_TEST_URL: postgresql://omniroute_integration:integration-only@127.0.0.1:5432/omniroute_integration_upgrade
+        run: pnpm --filter @omniroute/api db:verify-upgrade
+      - name: Validate migrations, drift, and database integration tests
         run: pnpm --filter @omniroute/api test:database
 
   build:
@@ -167,7 +182,7 @@ jobs:
         integration-tests,
       ]
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4
@@ -185,11 +200,11 @@ jobs:
           enable-cache: true
       - run: pnpm install --frozen-lockfile
       - run: uv sync --project services/ai-router --all-groups --frozen
-      - name: Build all deployables
-        run: pnpm build
-      - name: Build production images
+      - name: Validate Compose configurations
         run: |
-          docker build --file infrastructure/docker/api.Dockerfile --tag omniroute-api:ci .
-          docker build --file infrastructure/docker/web.Dockerfile --tag omniroute-web:ci \
-            --build-arg NEXT_PUBLIC_API_URL=https://api.example.invalid .
-          docker build --file infrastructure/docker/ai-router.Dockerfile --tag omniroute-ai-router:ci .
+          docker compose --profile application config --quiet
+          docker compose -f compose.integration.yaml config --quiet
+      - name: Build frontend, API, and router
+        run: pnpm build
+      - name: Build and smoke-test production images
+        run: bash scripts/verify-images.sh

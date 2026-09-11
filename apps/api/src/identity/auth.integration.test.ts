@@ -11,18 +11,17 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../app.module.js';
 import { createDatabaseClient } from '../database/database-client.js';
+import { verifiedIntegrationUrl } from '../database/integration-safety.js';
 import { GoogleOAuthClient } from './google-oauth.client.js';
 
-const databaseUrl = process.env.DATABASE_TEST_URL;
+const databaseUrl = await verifiedIntegrationUrl();
 const testEmail = 'auth-flow@omniroute.local';
 
 function cookieHeader(cookies: { name: string; value: string }[]): string {
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
 }
 
-describe.skipIf(!databaseUrl)('authentication', () => {
-  if (!databaseUrl) return;
-
+describe('authentication', () => {
   let app: INestApplication;
   let fastify: FastifyInstance;
   const database = createDatabaseClient(databaseUrl);

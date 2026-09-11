@@ -5,6 +5,7 @@ description = "Provider-neutral AI orchestration boundary for OmniRoute"
 requires-python = ">=3.12,<3.15"
 dependencies = [
   "fastapi==0.141.1",
+  "httpx>=0.28,<0.29",
   "pydantic==2.13.5",
   "pydantic-settings==2.15.0",
   "uvicorn[standard]==0.52.4",
@@ -13,9 +14,11 @@ dependencies = [
 [dependency-groups]
 dev = [
   "hatchling>=1.27.0,<2.0.0",
+  "jsonschema>=4.25,<5",
   "mypy>=1.18.0,<2.0.0",
   "pytest==9.1.1",
   "ruff==0.16.6",
+  "types-jsonschema>=4.26.0.20260518",
 ]
 
 [build-system]

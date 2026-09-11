@@ -38,6 +38,7 @@ services:
       context: .
       dockerfile: infrastructure/docker/ai-router.Dockerfile
     environment:
+      AI_ROUTER_INTERNAL_TOKEN: ${AI_ROUTER_INTERNAL_TOKEN:-}
       AI_ROUTER_HOST: 0.0.0.0
       AI_ROUTER_LOG_LEVEL: ${AI_ROUTER_LOG_LEVEL:-info}
       AI_ROUTER_PORT: 8001
@@ -78,6 +79,8 @@ services:
         condition: service_healthy
     environment:
       AI_ROUTER_URL: http://ai-router:8001
+      AI_ROUTER_INTERNAL_TOKEN: ${AI_ROUTER_INTERNAL_TOKEN:-}
+      AI_EXECUTION_PROVIDER: ${AI_EXECUTION_PROVIDER:-mock}
       API_PUBLIC_URL: http://localhost:${API_PORT:-4000}
       API_HOST: 0.0.0.0
       API_PORT: 4000

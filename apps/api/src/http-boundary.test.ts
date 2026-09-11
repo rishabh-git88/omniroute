@@ -39,7 +39,7 @@ describe('real Fastify browser boundary', () => {
           useValue: {
             requestGroupForWorkspace: vi
               .fn()
-              .mockResolvedValue({ status: 'COMPLETED' }),
+              .mockResolvedValue({ status: 'COMPLETED', modelRuns: [] }),
           },
         },
       ],

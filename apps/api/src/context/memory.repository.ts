@@ -42,13 +42,22 @@ export class MemoryRepository {
       where: {
         workspaceId,
         valid: true,
-        OR: [
-          { conversationId: null, ownerUserId: null },
-          ...(ownerUserId === undefined ? [] : [{ ownerUserId }]),
-          ...(conversationId === undefined ? [] : [{ conversationId }]),
+        AND: [
+          {
+            OR: [
+              { conversationId: null },
+              ...(conversationId ? [{ conversationId }] : []),
+            ],
+          },
+          {
+            OR: [
+              { ownerUserId: null },
+              ...(ownerUserId ? [{ ownerUserId }] : []),
+            ],
+          },
         ],
       },
-      orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }],
+      orderBy: [{ isPinned: 'desc' }, { createdAt: 'desc' }, { id: 'asc' }],
     });
   }
 }

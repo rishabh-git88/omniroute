@@ -9,12 +9,15 @@ import {
 } from '@nestjs/platform-fastify';
 import { AUTH_SESSION_COOKIE } from '@omniroute/types';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { CanonicalChatRequest } from '@omniroute/provider-contracts';
+import { MockProvider } from '../providers/mock.provider.js';
 
 import { AppModule } from '../app.module.js';
 import { createDatabaseClient } from '../database/database-client.js';
+import { verifiedIntegrationUrl } from '../database/integration-safety.js';
 
-const databaseUrl = process.env.DATABASE_TEST_URL;
+const databaseUrl = await verifiedIntegrationUrl();
 const sessionSecret = 'conversation-test-session-secret-32-characters';
 
 function sessionHash(token: string): string {
@@ -29,10 +32,9 @@ function csrfToken(sessionId: string): string {
     .digest('base64url');
 }
 
-describe.skipIf(!databaseUrl)('conversation flow', () => {
-  if (!databaseUrl) return;
-
+describe('conversation flow', () => {
   let app: INestApplication;
+  const providerRequests: CanonicalChatRequest[] = [];
   let fastify: FastifyInstance;
   const database = createDatabaseClient(databaseUrl);
   let cookie: string;
@@ -88,7 +90,11 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
     });
     await database.providerRegistryEntry.create({
       data: {
-        capabilities: { modalities: { input: ['text'], output: ['text'] } },
+        capabilities: {
+          contextWindow: 32768,
+          maxOutputTokens: 4096,
+          modalities: { input: ['text'], output: ['text'] },
+        },
         effectiveAt: new Date(),
         enabled: true,
         modelId: model.id,
@@ -114,7 +120,11 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
     });
     await database.providerRegistryEntry.create({
       data: {
-        capabilities: { modalities: { input: ['text'], output: ['text'] } },
+        capabilities: {
+          contextWindow: 32768,
+          maxOutputTokens: 4096,
+          modalities: { input: ['text'], output: ['text'] },
+        },
         effectiveAt: new Date(),
         enabled: true,
         modelId: alternativeModel.id,
@@ -129,12 +139,43 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
         rolloutState: 'INTERNAL',
       },
     });
+    const third = await database.model.create({
+      data: {
+        displayName: 'Third mock',
+        modelKey: `fake:third-${crypto.randomUUID()}`,
+        providerId: provider.id,
+        providerModelId: 'third-test',
+      },
+    });
+    await database.providerRegistryEntry.create({
+      data: {
+        providerId: provider.id,
+        modelId: third.id,
+        registryVersion: 1,
+        enabled: true,
+        rolloutState: 'INTERNAL',
+        effectiveAt: new Date(),
+        capabilities: { contextWindow: 4096, maxOutputTokens: 256 },
+        pricingVersion: 'test-v1',
+        pricing: {
+          currency: 'USD',
+          inputPerMillionTokens: '0',
+          outputPerMillionTokens: '0',
+        },
+      },
+    });
     cookie = `${AUTH_SESSION_COOKIE}=${token}`;
     csrf = csrfToken(session.id);
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
+    const mockProvider = moduleRef.get(MockProvider);
+    const stream = mockProvider.streamChat.bind(mockProvider);
+    vi.spyOn(mockProvider, 'streamChat').mockImplementation((request) => {
+      providerRequests.push(structuredClone(request));
+      return stream(request);
+    });
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
     );
@@ -177,10 +218,39 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
     expect(created.statusCode).toBe(201);
     const conversationId = created.json<{ id: string }>().id;
 
+    const owner = await database.conversation.findUniqueOrThrow({
+      where: { id: conversationId },
+      include: { workspace: true },
+    });
+    const outsider = await database.user.create({
+      data: { email: `context-private-${crypto.randomUUID()}@omniroute.local` },
+    });
+    const otherConversation = await database.conversation.create({
+      data: { workspaceId: owner.workspaceId, title: 'Other scope' },
+    });
+    await database.memory.createMany({
+      data: [
+        {
+          workspaceId: owner.workspaceId,
+          ownerUserId: outsider.id,
+          conversationId,
+          kind: 'PINNED_FACT',
+          content: 'PRIVATE_OTHER_USER',
+        },
+        {
+          workspaceId: owner.workspaceId,
+          ownerUserId: owner.workspace.ownerId,
+          conversationId: otherConversation.id,
+          kind: 'PINNED_FACT',
+          content: 'PRIVATE_OTHER_CONVERSATION',
+        },
+      ],
+    });
+    const messageKey = crypto.randomUUID();
     const message = await fastify.inject({
       headers: {
         ...authenticatedHeaders(true),
-        'idempotency-key': crypto.randomUUID(),
+        'idempotency-key': messageKey,
       },
       method: 'POST',
       payload: { content: 'Explain the mock stream.', modelKey },
@@ -246,9 +316,67 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
       expect.arrayContaining([conversationId, operation.turnId]),
     );
 
+    expect(JSON.stringify(snapshot?.payload)).not.toContain('PRIVATE_OTHER');
     const firstResponse = conversation.turns[0]?.responses[0];
     if (!firstResponse) throw new Error('Expected the first model response');
     expect(firstResponse.selectedAt).not.toBeNull();
+    const workspace = await database.conversation.findUniqueOrThrow({
+      where: { id: conversationId },
+    });
+    await database.memory.create({
+      data: {
+        workspaceId: workspace.workspaceId,
+        kind: 'WORKSPACE_RULE',
+        content: 'New live memory must not enter the old snapshot',
+      },
+    });
+    const replay = await fastify.inject({
+      headers: { ...authenticatedHeaders(true), 'idempotency-key': messageKey },
+      method: 'POST',
+      payload: { content: 'Explain the mock stream.', modelKey },
+      url: `/v1/conversations/${conversationId}/turns`,
+    });
+    expect(replay.statusCode).toBe(201);
+    expect(replay.json()).toEqual(operation);
+    expect(
+      await database.contextSnapshot.findUnique({
+        where: { id: snapshot!.id },
+      }),
+    ).toEqual(snapshot);
+    await expect(
+      database.contextSnapshot.update({
+        where: { id: snapshot!.id },
+        data: { tokenEstimate: 0 },
+      }),
+    ).rejects.toThrow('immutable');
+    const small = await database.providerRegistryEntry.findFirstOrThrow({
+      where: { model: { providerModelId: 'third-test' } },
+      include: { model: true },
+    });
+    const priorRuns = await database.modelRun.count({
+      where: { turnId: operation.turnId },
+    });
+    await database.providerRegistryEntry.update({
+      where: { id: small.id },
+      data: { capabilities: { contextWindow: 200, maxOutputTokens: 64 } },
+    });
+    try {
+      const rejected = await fastify.inject({
+        headers: authenticatedHeaders(true),
+        method: 'POST',
+        payload: { modelKey: small.model.modelKey },
+        url: `/v1/model-responses/${firstResponse.id}/try-another`,
+      });
+      expect(rejected.statusCode).toBe(400);
+      expect(
+        await database.modelRun.count({ where: { turnId: operation.turnId } }),
+      ).toBe(priorRuns);
+    } finally {
+      await database.providerRegistryEntry.update({
+        where: { id: small.id },
+        data: { capabilities: { contextWindow: 4096, maxOutputTokens: 256 } },
+      });
+    }
     const alternative = await fastify.inject({
       headers: authenticatedHeaders(true),
       method: 'POST',
@@ -277,6 +405,23 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
       expect.arrayContaining([conversationId, operation.turnId]),
     );
     expect(alternativeSnapshot?.snapshotHash).toBe(snapshot?.snapshotHash);
+    expect(alternativeSnapshot?.payload).toEqual(snapshot?.payload);
+    expect(
+      providerRequests.find((request) => request.runId === alternativeRunId)
+        ?.context,
+    ).toEqual(
+      providerRequests.find((request) => request.runId === runId)?.context,
+    );
+
+    const reloadedClient = createDatabaseClient(databaseUrl);
+    try {
+      const reloaded = await reloadedClient.contextSnapshot.findUniqueOrThrow({
+        where: { id: snapshot!.id },
+      });
+      expect(reloaded.payload).toEqual(snapshot?.payload);
+    } finally {
+      await reloadedClient.$disconnect();
+    }
 
     const afterAlternative = await fastify.inject({
       headers: authenticatedHeaders(),
@@ -359,6 +504,57 @@ describe.skipIf(!databaseUrl)('conversation flow', () => {
     expect(afterArchive.json<Array<{ id: string }>>()).not.toContainEqual(
       expect.objectContaining({ id: conversationId }),
     );
+  });
+
+  it('Compare 3 freezes one context before any mock run and completes all candidates', async () => {
+    const created = await fastify.inject({
+      headers: authenticatedHeaders(true),
+      method: 'POST',
+      payload: { title: 'Compare context', mode: 'COMPARE' },
+      url: '/v1/conversations',
+    });
+    const id = created.json<{ id: string }>().id;
+    const message = await fastify.inject({
+      headers: {
+        ...authenticatedHeaders(true),
+        'idempotency-key': crypto.randomUUID(),
+      },
+      method: 'POST',
+      payload: { content: 'Compare the same input', modelKey },
+      url: `/v1/conversations/${id}/turns`,
+    });
+    expect(message.statusCode).toBe(201);
+    const operation = message.json<{
+      runIds: string[];
+      requestGroupId: string;
+    }>();
+    expect(operation.runIds).toHaveLength(3);
+    const snapshots = await database.contextSnapshot.findMany({
+      where: { runId: { in: operation.runIds } },
+    });
+    expect(snapshots).toHaveLength(3);
+    expect(new Set(snapshots.map((item) => item.snapshotHash)).size).toBe(1);
+    const events = await fastify.inject({
+      headers: authenticatedHeaders(),
+      method: 'GET',
+      url: `/v1/request-groups/${operation.requestGroupId}/events`,
+    });
+    expect(events.statusCode).toBe(200);
+    for (const runId of operation.runIds) {
+      expect(
+        await database.modelRun.findUniqueOrThrow({ where: { id: runId } }),
+      ).toMatchObject({ status: 'COMPLETED' });
+    }
+    const compared = providerRequests.filter((request) =>
+      operation.runIds.includes(request.runId),
+    );
+    expect(compared).toHaveLength(3);
+    expect(
+      new Set(compared.map((request) => JSON.stringify(request.context))).size,
+    ).toBe(1);
+    expect(
+      await database.conversation.findUniqueOrThrow({ where: { id } }),
+    ).toMatchObject({ activeHeadId: null });
   });
 
   it('cancels an in-flight model run through the same stream and durable state', async () => {

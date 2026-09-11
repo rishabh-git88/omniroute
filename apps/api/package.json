@@ -6,15 +6,18 @@
   "scripts": {
     "build": "prisma generate --config prisma-generate.config.ts && nest build",
     "db:generate": "prisma generate --config prisma-generate.config.ts",
+    "db:validate": "prisma validate --config prisma-generate.config.ts",
+    "db:verify-upgrade": "tsx scripts/test-database.ts --upgrade",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
     "db:seed": "prisma db seed",
+    "db:seed:registry": "tsx scripts/seed-registry.ts",
     "dev": "nest start --watch",
-    "lint": "eslint src --ignore-pattern 'generated/**' --config ../../eslint.config.mjs",
+    "lint": "eslint src scripts prisma/*.ts prisma*.config.ts vitest*.config.ts --ignore-pattern 'generated/**' --config ../../eslint.config.mjs",
     "start": "node dist/main.js",
     "test": "prisma generate --config prisma-generate.config.ts && vitest run --exclude 'src/**/*.integration.test.ts'",
-    "test:database": "prisma migrate deploy --config prisma-test.config.ts && prisma generate --config prisma-test.config.ts && vitest run src/database/core-domain.integration.test.ts src/identity/auth.integration.test.ts src/conversations/conversation.integration.test.ts --no-file-parallelism",
-    "typecheck": "prisma generate --config prisma-generate.config.ts && tsc -p tsconfig.json --noEmit"
+    "test:database": "tsx scripts/test-database.ts",
+    "typecheck": "prisma generate --config prisma-generate.config.ts && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 
 import {
   ConversationMode,
@@ -64,7 +64,29 @@ export class PrismaConversationRepository implements ConversationRepository {
           },
         },
       });
-      if (existing) return existing;
+      if (existing) {
+        const previous = await transaction.turn.findUniqueOrThrow({
+          where: { requestGroupId: existing.id },
+          include: { modelRuns: true },
+        });
+        const initialModels = previous.modelRuns.filter((run) =>
+          input.registryEntryIds.includes(run.registryEntryId),
+        );
+        if (
+          existing.workspaceId !== input.workspaceId ||
+          existing.conversationId !== input.conversationId ||
+          existing.mode !== input.mode ||
+          previous.userContent !== input.content ||
+          initialModels.length !== input.registryEntryIds.length ||
+          (input.parentResponseId !== undefined &&
+            previous.parentResponseId !== input.parentResponseId)
+        ) {
+          throw new ConflictException(
+            'Idempotency key already belongs to a different command',
+          );
+        }
+        return existing;
+      }
 
       const conversation = await transaction.conversation.findFirst({
         where: {

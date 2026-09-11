@@ -65,6 +65,8 @@ export class MockProvider implements AIProvider {
   public async *streamChat(
     request: CanonicalChatRequest,
   ): AsyncIterable<ProviderEvent> {
+    if (process.env.NODE_ENV === 'production')
+      throw new Error('Mock execution is disabled in production');
     const providerRequestId = `mock-${request.runId}`;
     yield { providerRequestId, runId: request.runId, type: 'run.started' };
 

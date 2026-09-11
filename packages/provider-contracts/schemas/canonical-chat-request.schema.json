@@ -1,42 +1,127 @@
 {
-  "$id": "https://omniroute.local/schemas/canonical-chat-request.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
+  "type": "object",
   "properties": {
-    "contextSnapshotId": { "format": "uuid", "type": "string" },
-    "maxOutputTokens": { "minimum": 1, "type": "integer" },
-    "messages": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "content": { "minLength": 1, "type": "string" },
-          "role": {
-            "enum": ["system", "user", "assistant"],
-            "type": "string"
+    "context": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "content": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "type": "string",
+                "enum": ["system", "user", "assistant"]
+              }
+            },
+            "required": ["content", "role"],
+            "additionalProperties": false
           }
         },
-        "required": ["content", "role"],
-        "type": "object"
+        "sourceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        },
+        "provenance": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "fileId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["turn", "response", "memory", "file_chunk"]
+              },
+              "contentHash": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "included": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["id", "kind", "contentHash", "included"],
+            "additionalProperties": false
+          }
+        },
+        "retrieval": {
+          "type": "string",
+          "enum": ["semantic", "lexical", "unavailable", "empty"]
+        },
+        "summaryVersion": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "tokenEstimate": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
       },
-      "minItems": 1,
-      "type": "array"
+      "required": ["messages", "sourceIds", "tokenEstimate"],
+      "additionalProperties": false
     },
-    "modelKey": { "minLength": 1, "type": "string" },
+    "contextSnapshotId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "maxOutputTokens": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "modelKey": {
+      "type": "string",
+      "minLength": 1
+    },
     "provider": {
-      "enum": ["fake", "openai", "anthropic", "gemini"],
-      "type": "string"
+      "type": "string",
+      "enum": ["fake", "openai", "anthropic", "gemini"]
     },
-    "runId": { "format": "uuid", "type": "string" },
-    "temperature": { "maximum": 2, "minimum": 0, "type": "number" }
+    "runId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2
+    }
   },
   "required": [
+    "context",
     "contextSnapshotId",
     "maxOutputTokens",
-    "messages",
     "modelKey",
     "provider",
     "runId"
   ],
-  "title": "CanonicalChatRequest",
-  "type": "object"
+  "additionalProperties": false
 }

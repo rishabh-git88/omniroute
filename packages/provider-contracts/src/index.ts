@@ -7,7 +7,7 @@ export const providerIdSchema = z.enum([
   'gemini',
 ]);
 
-export const canonicalMessageSchema = z.object({
+export const canonicalMessageSchema = z.strictObject({
   content: z.string().min(1),
   role: z.enum(['system', 'user', 'assistant']),
 });
@@ -17,14 +17,27 @@ export const canonicalMessageSchema = z.object({
  * Adapters only translate these canonical messages; retrieval and persistence
  * details never leak into provider SDK payloads.
  */
-export const contextBundleSchema = z.object({
+export const contextBundleSchema = z.strictObject({
   messages: z.array(canonicalMessageSchema).min(1),
   sourceIds: z.array(z.uuid()),
+  provenance: z
+    .array(
+      z.strictObject({
+        id: z.uuid(),
+        fileId: z.uuid().optional(),
+        kind: z.enum(['turn', 'response', 'memory', 'file_chunk']),
+        contentHash: z.string().regex(/^[a-f0-9]{64}$/),
+        included: z.boolean(),
+        version: z.number().int().positive().optional(),
+      }),
+    )
+    .optional(),
+  retrieval: z.enum(['semantic', 'lexical', 'unavailable', 'empty']).optional(),
   summaryVersion: z.number().int().positive().optional(),
   tokenEstimate: z.number().int().nonnegative(),
 });
 
-export const canonicalChatRequestSchema = z.object({
+export const canonicalChatRequestSchema = z.strictObject({
   context: contextBundleSchema,
   contextSnapshotId: z.uuid(),
   maxOutputTokens: z.number().int().positive(),
@@ -102,3 +115,16 @@ export interface AIProvider {
   streamChat(request: CanonicalChatRequest): AsyncIterable<ProviderEvent>;
   usage(request: CanonicalChatRequest): Promise<NormalizedUsage>;
 }
+
+/** Internal NestJS → router envelope; model data comes only from the registry. */
+export const providerExecutionPlanSchema = z.strictObject({
+  request: canonicalChatRequestSchema,
+  model: z.strictObject({
+    provider: z.enum(['openai', 'anthropic', 'gemini']),
+    providerModelId: z.string().min(1),
+    registryVersion: z.number().int().positive(),
+    capabilities: z.record(z.string(), z.unknown()),
+    pricingVersion: z.string().min(1),
+  }),
+});
+export type ProviderExecutionPlan = z.infer<typeof providerExecutionPlanSchema>;

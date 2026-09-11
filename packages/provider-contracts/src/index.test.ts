@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { canonicalChatRequestSchema } from './index.js';
+import {
+  providerExecutionPlanSchema,
+  canonicalChatRequestSchema,
+} from './index.js';
 
 describe('canonicalChatRequestSchema', () => {
   it('accepts a provider-neutral request', () => {
@@ -19,4 +22,56 @@ describe('canonicalChatRequestSchema', () => {
 
     expect(request.provider).toBe('fake');
   });
+});
+
+import { readFileSync } from 'node:fs';
+import { z } from 'zod';
+const fixtures = JSON.parse(
+  readFileSync(
+    new URL('../fixtures/canonical-requests.json', import.meta.url),
+    'utf8',
+  ),
+) as Array<{ name: string; valid: boolean; request: unknown }>;
+for (const fixture of fixtures) {
+  it(`shared wire fixture: ${fixture.name}`, () => {
+    expect(canonicalChatRequestSchema.safeParse(fixture.request).success).toBe(
+      fixture.valid,
+    );
+  });
+}
+it('publishes the schema generated from the actual Zod contract', () => {
+  const published = JSON.parse(
+    readFileSync(
+      new URL('../schemas/canonical-chat-request.schema.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  expect(published).toEqual(z.toJSONSchema(canonicalChatRequestSchema));
+});
+
+const executionFixtures = JSON.parse(
+  readFileSync(
+    new URL('../fixtures/execution-plans.json', import.meta.url),
+    'utf8',
+  ),
+) as Array<{ name: string; valid: boolean; plan: unknown }>;
+for (const fixture of executionFixtures) {
+  it(`execution wire fixture: ${fixture.name}`, () => {
+    expect(providerExecutionPlanSchema.safeParse(fixture.plan).success).toBe(
+      fixture.valid,
+    );
+  });
+}
+it('publishes the execution envelope schema from Zod', () => {
+  expect(
+    JSON.parse(
+      readFileSync(
+        new URL(
+          '../schemas/provider-execution-plan.schema.json',
+          import.meta.url,
+        ),
+        'utf8',
+      ),
+    ),
+  ).toEqual(z.toJSONSchema(providerExecutionPlanSchema));
 });

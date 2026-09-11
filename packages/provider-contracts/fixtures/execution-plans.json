@@ -1,0 +1,302 @@
+[
+  {
+    "name": "reviewed execution envelope",
+    "valid": true,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1"
+      }
+    }
+  },
+  {
+    "name": "extra envelope key",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1"
+      },
+      "secret": "forbidden"
+    }
+  },
+  {
+    "name": "snake model alias",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1",
+        "provider_model_id": "reviewed-model"
+      }
+    }
+  },
+  {
+    "name": "unknown model field",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1",
+        "price": 0
+      }
+    }
+  },
+  {
+    "name": "null pricing version",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": null
+      }
+    }
+  },
+  {
+    "name": "string registry version",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": "1",
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1"
+      }
+    }
+  },
+  {
+    "name": "boolean registry version",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": true,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1"
+      }
+    }
+  },
+  {
+    "name": "extra request field",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "user",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001",
+        "prompt": "other"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1"
+      }
+    }
+  },
+  {
+    "name": "bad message role",
+    "valid": false,
+    "plan": {
+      "request": {
+        "context": {
+          "messages": [
+            {
+              "role": "tool",
+              "content": "hello"
+            }
+          ],
+          "sourceIds": [],
+          "tokenEstimate": 53
+        },
+        "contextSnapshotId": "019cd3a5-8d1d-7000-8000-000000000002",
+        "maxOutputTokens": 100,
+        "modelKey": "reviewed",
+        "provider": "openai",
+        "runId": "019cd3a5-8d1d-7000-8000-000000000001"
+      },
+      "model": {
+        "provider": "openai",
+        "providerModelId": "reviewed-model",
+        "registryVersion": 1,
+        "capabilities": {
+          "contextWindow": 32768,
+          "maxOutputTokens": 4096
+        },
+        "pricingVersion": "reviewed-v1"
+      }
+    }
+  }
+]
