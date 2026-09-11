@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     internal_token: str = Field(default="", repr=False)
     request_timeout_seconds: float = Field(default=90, gt=0, le=300)
     max_output_tokens: int = Field(default=4096, gt=0, le=65536)
+    max_concurrent_requests: int = Field(default=16, gt=0, le=256)
+    health_cooldown_seconds: float = Field(default=30, ge=0, le=300)
     max_output_bytes: int = Field(default=262144, gt=0, le=1048576)
     enable_openai: bool = False
     enable_anthropic: bool = False

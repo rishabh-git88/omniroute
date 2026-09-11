@@ -15,6 +15,7 @@ import { AppModule } from '../app.module.js';
 import { createDatabaseClient } from '../database/database-client.js';
 import { verifiedIntegrationUrl } from '../database/integration-safety.js';
 import { MockProvider } from './mock.provider.js';
+import { AiRouterClient } from './ai-router.client.js';
 
 const databaseUrl = await verifiedIntegrationUrl();
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -109,7 +110,7 @@ async function saved(runId: string) {
   });
 }
 
-describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adapter', () => {
+describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP adapters', () => {
   beforeAll(async () => {
     upstream = createServer((request, response) => {
       let body = '';
@@ -118,6 +119,46 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
         body += chunk;
       });
       request.on('end', () => {
+        if (
+          request.url?.includes('/anthropic') ||
+          request.url?.includes('/gemini')
+        ) {
+          response.writeHead(200, { 'content-type': 'text/event-stream' });
+          const send = (value: object) =>
+            response.write(`data: ${JSON.stringify(value)}\n\n`);
+          if (request.url.includes('/anthropic')) {
+            send({
+              type: 'message_start',
+              message: {
+                id: 'msg_fixture',
+                usage: { input_tokens: 12, output_tokens: 1 },
+              },
+            });
+            send({
+              type: 'content_block_delta',
+              delta: { type: 'text_delta', text: 'Anthropic fixture response' },
+            });
+            send({
+              type: 'message_delta',
+              delta: { stop_reason: 'end_turn' },
+              usage: { output_tokens: 8 },
+            });
+            send({ type: 'message_stop' });
+          } else {
+            send({
+              responseId: 'gemini_fixture',
+              candidates: [
+                {
+                  content: { parts: [{ text: 'Gemini fixture response' }] },
+                  finishReason: 'STOP',
+                },
+              ],
+              usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 8 },
+            });
+          }
+          response.end();
+          return;
+        }
         const parsed = JSON.parse(body) as (typeof requests)[number]['body'];
         requests.push({
           body: parsed,
@@ -125,6 +166,21 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
         });
         const scenario = parsed.input.at(-1)?.content ?? '';
         response.on('close', () => disconnected.add(scenario));
+        if (scenario === 'auto-temporary') {
+          response.writeHead(503);
+          response.end();
+          return;
+        }
+        if (scenario === 'fallback') {
+          response.writeHead(429);
+          response.end();
+          return;
+        }
+        if (scenario === 'invalid-request') {
+          response.writeHead(400);
+          response.end();
+          return;
+        }
         response.writeHead(200, { 'content-type': 'text/event-stream' });
         const send = (value: object) =>
           response.write(`data: ${JSON.stringify(value)}\n\n`);
@@ -132,6 +188,11 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
           type: 'response.created',
           response: { id: `resp_${scenario}` },
         });
+        if (scenario === 'auto-timeout') return;
+        if (scenario === 'auto-truncated') {
+          response.end();
+          return;
+        }
         send({
           type: 'response.output_text.delta',
           delta: 'Hello from the OpenAI HTTP fixture.',
@@ -192,7 +253,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
     for (const [key, value] of Object.entries({
       NODE_ENV: 'test',
       DATABASE_URL: databaseUrl,
-      AI_EXECUTION_PROVIDER: 'openai',
+      AI_EXECUTION_PROVIDER: 'multi',
       AI_ROUTER_URL: `http://127.0.0.1:${routerPort}`,
       AI_ROUTER_INTERNAL_TOKEN: internalToken,
       AI_ROUTER_TIMEOUT_MS: '2000',
@@ -254,15 +315,73 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
         enabled: true,
         rolloutState: 'INTERNAL',
         effectiveAt: new Date(),
-        capabilities: { contextWindow: 32768, maxOutputTokens: 4096 },
+        capabilities: {
+          contextWindow: 32768,
+          maxOutputTokens: 4096,
+          modalities: { input: ['text'], output: ['text'] },
+          files: false,
+          images: false,
+          tools: false,
+          search: false,
+          taskScores: { general: 70 },
+          qualityScore: 70,
+          typicalLatencyMs: 500,
+        },
         pricingVersion: 'synthetic-test-only',
         pricing: {
           currency: 'USD',
+          sourceUrl: 'https://pricing.example.invalid',
+          reviewedAt: '2026-09-11T00:00:00Z',
           inputPerMillionTokens: '1',
           outputPerMillionTokens: '2',
         },
       },
     });
+    for (const key of ['anthropic', 'gemini']) {
+      const provider = await database.provider.upsert({
+        where: { key },
+        create: { key, displayName: key, enabled: true },
+        update: { enabled: true },
+      });
+      const model = await database.model.create({
+        data: {
+          modelKey: `${key}:routing-fixture`,
+          providerModelId: 'synthetic-routing-model',
+          displayName: `${key} fixture`,
+          providerId: provider.id,
+        },
+      });
+      await database.providerRegistryEntry.create({
+        data: {
+          modelId: model.id,
+          providerId: provider.id,
+          registryVersion: 1,
+          enabled: true,
+          rolloutState: 'INTERNAL',
+          effectiveAt: new Date(),
+          capabilities: {
+            contextWindow: 32768,
+            maxOutputTokens: 4096,
+            modalities: { input: ['text'], output: ['text'] },
+            files: false,
+            images: false,
+            tools: false,
+            search: false,
+            taskScores: { general: key === 'anthropic' ? 95 : 75 },
+            qualityScore: key === 'anthropic' ? 80 : 100,
+            typicalLatencyMs: key === 'anthropic' ? 100 : 5000,
+          },
+          pricingVersion: 'synthetic-test-only',
+          pricing: {
+            currency: 'USD',
+            inputPerMillionTokens: key === 'anthropic' ? '2' : '5',
+            outputPerMillionTokens: key === 'anthropic' ? '3' : '10',
+            sourceUrl: 'https://pricing.example.invalid',
+            reviewedAt: '2026-09-11T00:00:00Z',
+          },
+        },
+      });
+    }
     const module = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -323,7 +442,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
   });
 
   it.each([
-    ['failure', 'OPENAI_ERROR', 'settled'],
+    ['failure', 'PROVIDER_ERROR', 'settled'],
     ['truncated', 'STREAM_TRUNCATED', 'reconciliation_required'],
     ['timeout', 'PROVIDER_TIMEOUT', 'reconciliation_required'],
   ])(
@@ -405,5 +524,224 @@ describe('browser HTTP → NestJS → authenticated FastAPI → OpenAI HTTP adap
     });
     expect(response.status).toBe(400);
     expect(requests).toHaveLength(before);
+  });
+  it.each([
+    ['economy', 'openai'],
+    ['smart', 'anthropic'],
+    ['max', 'gemini'],
+  ])(
+    'propagates %s from the browser command through the actual router to %s',
+    async (routingMode, expectedProvider) => {
+      const created = await command('conversations', {});
+      const { id } = (await created.json()) as { id: string };
+      const response = await command(`conversations/${id}/turns`, {
+        content: 'Hello routing',
+        routingMode,
+        pricing: { inputPerMillionTokens: '-100' },
+      });
+      expect(response.status).toBe(201);
+      const result = (await response.json()) as {
+        requestGroupId: string;
+        runIds: string[];
+      };
+      await (await events(result.requestGroupId)).text();
+      const run = await saved(result.runIds[0]!);
+      expect(run.status).toBe('COMPLETED');
+      expect(run.provider.key).toBe(expectedProvider);
+      expect(run.executionResult).toMatchObject({
+        selectedMode: routingMode,
+        totalTokens: 20,
+        fallbackCount: 0,
+      });
+      expect(run.requestGroup.routingDecision?.inputSnapshot).toMatchObject({
+        mode: routingMode,
+        request: { mode: routingMode },
+      });
+      expect(run.usageEvents[0]?.actualCost.toNumber()).toBeGreaterThan(0);
+    },
+  );
+
+  it('falls back after a rate limit with frozen context and per-attempt billing', async () => {
+    const created = await command('conversations', {});
+    const { id } = (await created.json()) as { id: string };
+    const response = await command(`conversations/${id}/turns`, {
+      content: 'fallback',
+      routingMode: 'economy',
+    });
+    expect(response.status).toBe(201);
+    const result = (await response.json()) as {
+      requestGroupId: string;
+      runIds: string[];
+    };
+    const text = await (await events(result.requestGroupId)).text();
+    expect(text).toContain('event: fallback.started');
+    expect(text).toContain('Anthropic fixture response');
+    expect(text.match(/"status":"completed"/g)).toHaveLength(1);
+    const runs = await database.modelRun.findMany({
+      where: { requestGroupId: result.requestGroupId },
+      include: {
+        contextSnapshot: true,
+        creditReservation: true,
+        provider: true,
+        usageEvents: true,
+      },
+      orderBy: { attempt: 'asc' },
+    });
+    expect(runs).toHaveLength(2);
+    expect(runs[0]?.executionResult).toMatchObject({
+      failureCode: 'RATE_LIMITED',
+      billingState: 'reconciliation_required',
+    });
+    expect(runs[1]?.executionResult).toMatchObject({
+      originalProvider: 'openai',
+      finalProvider: 'anthropic',
+      fallbackCount: 1,
+      selectedMode: 'economy',
+      billingState: 'settled',
+    });
+    expect(runs[0]?.contextSnapshot?.snapshotHash).toBe(
+      runs[1]?.contextSnapshot?.snapshotHash,
+    );
+    expect(runs[0]?.creditReservation?.id).not.toBe(
+      runs[1]?.creditReservation?.id,
+    );
+    expect(runs[1]?.usageEvents).toHaveLength(1);
+    expect(
+      (
+        await database.requestGroup.findUniqueOrThrow({
+          where: { id: result.requestGroupId },
+        })
+      ).status,
+    ).toBe('COMPLETED');
+  });
+
+  it('does not fall back on a user validation error or accept invalid modes', async () => {
+    const created = await command('conversations', {});
+    const { id } = (await created.json()) as { id: string };
+    const invalid = await command(`conversations/${id}/turns`, {
+      content: 'hello',
+      routingMode: 'invalid',
+    });
+    expect(invalid.status).toBe(400);
+    const response = await command(`conversations/${id}/turns`, {
+      content: 'invalid-request',
+      routingMode: 'economy',
+    });
+    expect(response.status).toBe(201);
+    const result = (await response.json()) as {
+      requestGroupId: string;
+      runIds: string[];
+    };
+    const text = await (await events(result.requestGroupId)).text();
+    expect(text).not.toContain('fallback.started');
+    expect(
+      await database.modelRun.count({
+        where: { requestGroupId: result.requestGroupId },
+      }),
+    ).toBe(1);
+    expect((await saved(result.runIds[0]!)).executionResult).toMatchObject({
+      failureCode: 'PROVIDER_INVALID_REQUEST',
+    });
+  });
+
+  it.each([
+    ['auto-timeout', 'PROVIDER_TIMEOUT'],
+    ['auto-truncated', 'STREAM_TRUNCATED'],
+    ['auto-temporary', 'PROVIDER_TEMPORARY_ERROR'],
+  ])(
+    'recovers from %s before output with a distinct persisted attempt',
+    async (content, code) => {
+      const created = await command('conversations', {});
+      const { id } = (await created.json()) as { id: string };
+      const response = await command(`conversations/${id}/turns`, {
+        content,
+        routingMode: 'economy',
+      });
+      expect(response.status).toBe(201);
+      const result = (await response.json()) as {
+        requestGroupId: string;
+        runIds: string[];
+      };
+      const text = await (await events(result.requestGroupId)).text();
+      expect(text).toContain('Anthropic fixture response');
+      expect(text).toContain('fallback.started');
+      expect((await saved(result.runIds[0]!)).executionResult).toMatchObject({
+        failureCode: code,
+      });
+      expect(
+        await database.modelRun.count({
+          where: { requestGroupId: result.requestGroupId },
+        }),
+      ).toBe(2);
+    },
+  );
+
+  it('falls back if the chosen provider is disabled between selection and execution', async () => {
+    const client = app!.get(AiRouterClient);
+    const original = client.route.bind(client);
+    const route = vi
+      .spyOn(client, 'route')
+      .mockImplementationOnce(async (request) => {
+        const decision = await original(request);
+        expect(decision.selectedProvider).toBe('openai');
+        await database.provider.update({
+          where: { key: 'openai' },
+          data: { enabled: false },
+        });
+        return decision;
+      });
+    try {
+      const created = await command('conversations', {});
+      const { id } = (await created.json()) as { id: string };
+      const response = await command(`conversations/${id}/turns`, {
+        content: 'disable after routing',
+        routingMode: 'economy',
+      });
+      expect(response.status).toBe(201);
+      const result = (await response.json()) as {
+        requestGroupId: string;
+        runIds: string[];
+      };
+      const text = await (await events(result.requestGroupId)).text();
+      expect(text).toContain('Anthropic fixture response');
+      expect((await saved(result.runIds[0]!)).executionResult).toMatchObject({
+        failureCode: 'PROVIDER_DISABLED',
+        billingState: 'released',
+      });
+    } finally {
+      route.mockRestore();
+      await database.provider.update({
+        where: { key: 'openai' },
+        data: { enabled: true },
+      });
+    }
+  });
+
+  it('reuses an idempotent mode command and rejects changing its mode', async () => {
+    const created = await command('conversations', {});
+    const { id } = (await created.json()) as { id: string };
+    const key = crypto.randomUUID();
+    const send = (routingMode: string) =>
+      fetch(`${origin}/v1/conversations/${id}/turns`, {
+        method: 'POST',
+        headers: { ...headers(true), 'idempotency-key': key },
+        body: JSON.stringify({ content: 'idempotent routing', routingMode }),
+      });
+    const response = await send('economy');
+    expect(response.status).toBe(201);
+    const first = (await response.json()) as {
+      requestGroupId: string;
+      runIds: string[];
+    };
+    await (await events(first.requestGroupId)).text();
+    const repeated = await send('economy');
+    expect(repeated.status).toBe(201);
+    expect(await repeated.json()).toMatchObject(first);
+    expect((await send('max')).status).toBe(409);
+    expect(
+      await database.modelRun.count({
+        where: { requestGroupId: first.requestGroupId },
+      }),
+    ).toBe(1);
   });
 });

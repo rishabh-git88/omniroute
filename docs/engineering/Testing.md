@@ -60,3 +60,15 @@ Use synthetic data and low-spend test keys. Test tenant isolation and resource e
 
 - Which provider event recordings may be committed without exposing content or proprietary data?
 - What concrete load targets and browser/device matrix define MVP readiness?
+
+## Multi-provider routing verification
+
+Phase 6 tests use actual NestJS and FastAPI servers with loopback OpenAI,
+Anthropic, and Gemini protocol fixtures. Mode propagation, persisted identity,
+usage, credit reconciliation, and fallback context hashes are verified through
+browser-style authenticated HTTP commands. Shared routing requests and emitted
+provider events are validated against Zod-generated JSON Schema and Pydantic.
+Unit matrices cover zero-price Economy, Smart/Max, metadata and context
+eligibility, health, terminal failures, timeout, cancellation, and output caps.
+No normal CI test needs paid provider credentials. See
+[[ADR-014-Multi-Provider-Routing]] and [[Database-Verification]].

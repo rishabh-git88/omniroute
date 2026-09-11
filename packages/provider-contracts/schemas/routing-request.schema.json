@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "requestGroupId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 20000
+    },
+    "mode": {
+      "default": "smart",
+      "type": "string",
+      "enum": ["economy", "smart", "max"]
+    },
+    "requestedMode": {
+      "default": "single",
+      "type": "string",
+      "enum": ["single", "compare"]
+    },
+    "models": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "registryEntryId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "provider": {
+            "type": "string",
+            "enum": ["fake", "openai", "anthropic", "gemini"]
+          },
+          "modelKey": {
+            "type": "string",
+            "minLength": 1
+          },
+          "providerModelId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "registryVersion": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "capabilities": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "pricing": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pricingVersion": {
+            "type": ["string", "null"]
+          },
+          "latency": {
+            "anyOf": [
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regionConstraints": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "registryEntryId",
+          "provider",
+          "modelKey",
+          "providerModelId",
+          "registryVersion",
+          "enabled",
+          "capabilities",
+          "regionConstraints"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "providerHealth": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string",
+            "enum": ["fake", "openai", "anthropic", "gemini"]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "enabled",
+              "missing_credentials",
+              "temporarily_unhealthy",
+              "rate_limited",
+              "timed_out",
+              "available",
+              "ready",
+              "degraded",
+              "unavailable"
+            ]
+          },
+          "latencyMs": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["provider", "status"],
+        "additionalProperties": false
+      }
+    },
+    "contextTokens": {
+      "default": 0,
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "maxOutputTokens": {
+      "default": 512,
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "requiresTools": {
+      "default": false,
+      "type": "boolean"
+    },
+    "requiresMultimodal": {
+      "default": false,
+      "type": "boolean"
+    },
+    "region": {
+      "type": ["string", "null"]
+    },
+    "userPreferredModel": {
+      "type": ["string", "null"]
+    },
+    "userPreferredProvider": {
+      "type": ["string", "null"]
+    }
+  },
+  "required": [
+    "requestGroupId",
+    "prompt",
+    "mode",
+    "requestedMode",
+    "models",
+    "providerHealth",
+    "contextTokens",
+    "maxOutputTokens",
+    "requiresTools",
+    "requiresMultimodal"
+  ],
+  "additionalProperties": false
+}

@@ -24,7 +24,7 @@ Normalized events cover run start, content delta, tool call, usage update, compl
 
 - [[Provider-Layer#OpenAI adapter|OpenAI adapter]] targets the Responses API.
 - [[Provider-Layer#Anthropic adapter|Anthropic adapter]] targets the Messages API and its streaming events.
-- [[Provider-Layer#Gemini adapter|Gemini adapter]] targets the Interactions API.
+- [[Provider-Layer#Gemini adapter|Gemini adapter]] targets the generateContent streaming API.
 - Translate canonical context/tools to provider formats and provider output/errors/usage back to canonical types.
 - Implement cancellation, estimates, request correlation, timeouts, and provider-specific safe retry behavior.
 - Expose capability snapshots to [[Model-Registry]] and pass normalized events to [[AI-Router]].
@@ -39,7 +39,7 @@ The adapter translates Messages streaming and normalized usage while preserving 
 
 ## Gemini adapter
 
-The adapter translates Interactions requests/events and reports capability differences through typed metadata.
+The adapter translates generateContent requests/events and reports capability differences through typed metadata.
 
 ## Inputs and outputs
 
@@ -70,18 +70,18 @@ Contract-test adapters with recorded/fake streams. Version adapters and run sche
 The MVP implementation lives in `services/ai-router/app/providers`. It exposes
 one canonical `generate`, `stream`, `capabilities`, `usage`, `health`, and
 `cancel` contract. OpenAI Responses, Anthropic Messages, and Gemini
-Interactions wire shapes stay in their respective adapters and are translated
+generateContent wire shapes stay in their respective adapters and are translated
 to normalized events before leaving this package. Adapter model identifiers,
 capabilities, and pricing versions arrive in the immutable Model Registry
 snapshot supplied with the run plan; adapters contain no pricing or model
 capability table.
 
-The first connected execution milestone enables only OpenAI Responses through
-NestJS → authenticated FastAPI SSE. See
-[[ADR-013-Authenticated-Single-Provider-Execution]] for configuration, output
-limits, timeout/cancellation, usage reconciliation, and verification boundaries.
-Anthropic and Gemini adapters remain contract-tested source, not enabled product
-execution paths. MockProvider is restricted to development/test.
+Phase 6 connects all three adapters through NestJS → authenticated FastAPI SSE.
+See [[ADR-014-Multi-Provider-Routing]] for normalized usage and terminal semantics,
+observed health, output limits, timeout/cancellation, bounded fallback, and
+verification boundaries. `generate` collects the same normalized stream. Interim
+usage is distinguished from final usage; provider-specific objects stay in this
+layer. MockProvider remains restricted to development/test.
 
 ## Related notes
 

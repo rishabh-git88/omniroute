@@ -75,3 +75,31 @@ it('publishes the execution envelope schema from Zod', () => {
     ),
   ).toEqual(z.toJSONSchema(providerExecutionPlanSchema));
 });
+
+import { routingRequestSchema, providerEventSchema } from './index.js';
+const routingFixtures = JSON.parse(
+  readFileSync(
+    new URL('../fixtures/routing-requests.json', import.meta.url),
+    'utf8',
+  ),
+) as Array<{ name: string; valid: boolean; request: unknown }>;
+for (const fixture of routingFixtures) {
+  it(`routing wire compatibility: ${fixture.name}`, () => {
+    expect(routingRequestSchema.safeParse(fixture.request).success).toBe(
+      fixture.valid,
+    );
+  });
+}
+it.each([
+  ['routing-request', routingRequestSchema],
+  ['provider-event', providerEventSchema],
+] as const)('publishes %s from Zod', (name, schema) => {
+  expect(
+    JSON.parse(
+      readFileSync(
+        new URL(`../schemas/${name}.schema.json`, import.meta.url),
+        'utf8',
+      ),
+    ),
+  ).toEqual(z.toJSONSchema(schema));
+});

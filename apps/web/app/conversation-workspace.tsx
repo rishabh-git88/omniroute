@@ -13,11 +13,13 @@ import {
   useState,
 } from 'react';
 
+import { conversationCommand, canAttemptModel } from './conversation-command';
 import { API_V1_URL } from './api-url';
 import { useAuth } from './auth-provider';
 import { decodeSseFrames } from './conversation-stream';
 
 type Model = {
+  health: string;
   displayName: string;
   modelKey: string;
   provider: { displayName: string; key: string };
@@ -51,6 +53,7 @@ type Conversation = {
       routingDecision: {
         reason?: string | null;
         strategy: string;
+        mode?: string | null;
         candidates: Array<{
           model: { displayName: string };
           provider: { displayName: string };
@@ -74,6 +77,9 @@ interface PendingRun {
   groupId: string;
   runId: string;
   turnId: string;
+  model?: string;
+  provider?: string;
+  routingMode?: string;
 }
 
 type RoutePreference = 'smart' | 'economy' | 'max';
@@ -89,12 +95,12 @@ const ROUTE_OPTIONS: Array<{
     value: 'smart',
   },
   {
-    description: 'Use a lighter option when available',
+    description: 'Lowest estimated cost among compatible models',
     label: 'Economy',
     value: 'economy',
   },
   {
-    description: 'Prioritize the fullest response',
+    description: 'Prioritize reviewed model quality',
     label: 'Max',
     value: 'max',
   },
@@ -182,7 +188,9 @@ export function ConversationWorkspace({
     setConversations(history);
     setModels(available);
     setUsage(currentUsage);
-    setModelKey((current) => current || available[0]?.modelKey || '');
+    setModelKey((current) =>
+      available.some((model) => model.modelKey === current) ? current : '',
+    );
   }, []);
 
   useEffect(() => {
@@ -248,6 +256,33 @@ export function ConversationWorkspace({
           );
           buffer = decoded.remainder;
           for (const frame of decoded.frames) {
+            if (
+              frame.event === 'fallback.started' ||
+              frame.event === 'run.status'
+            ) {
+              setPending((current) =>
+                current?.groupId === groupId
+                  ? {
+                      ...current,
+                      runId:
+                        typeof frame.data.runId === 'string'
+                          ? frame.data.runId
+                          : current.runId,
+                      ...(typeof frame.data.model === 'string'
+                        ? { model: frame.data.model }
+                        : {}),
+                      ...(typeof frame.data.provider === 'string'
+                        ? { provider: frame.data.provider }
+                        : {}),
+                      ...(typeof frame.data.routingMode === 'string'
+                        ? { routingMode: frame.data.routingMode }
+                        : {}),
+                    }
+                  : current,
+              );
+            }
+            if (frame.event === 'run.error')
+              setError('Generation could not complete. Please try again.');
             if (frame.event !== 'content.delta') continue;
             const delta =
               typeof frame.data.delta === 'string' ? frame.data.delta : '';
@@ -314,7 +349,9 @@ export function ConversationWorkspace({
         }>(
           `/conversations/${activeId}/turns`,
           {
-            body: JSON.stringify({ content: message, modelKey }),
+            body: JSON.stringify(
+              conversationCommand(message, routePreference, modelKey),
+            ),
             headers: { 'idempotency-key': newKey() },
             method: 'POST',
           },
@@ -347,6 +384,7 @@ export function ConversationWorkspace({
       initialConversationId,
       loadConversation,
       modelKey,
+      routePreference,
       pending,
       stream,
     ],
@@ -391,7 +429,10 @@ export function ConversationWorkspace({
         }>(
           `/conversations/${conversation.id}/turns/${turnId}/regenerate`,
           {
-            body: JSON.stringify({ modelKey }),
+            body: JSON.stringify({
+              routingMode: routePreference,
+              ...(modelKey ? { modelKey } : {}),
+            }),
             headers: { 'idempotency-key': newKey() },
             method: 'POST',
           },
@@ -406,7 +447,7 @@ export function ConversationWorkspace({
         );
       }
     },
-    [auth, conversation, modelKey, pending, startResult],
+    [auth, conversation, modelKey, routePreference, pending, startResult],
   );
 
   const tryAnother = useCallback(
@@ -519,7 +560,6 @@ export function ConversationWorkspace({
   }, [auth, conversation, loadConversation, loadSidebar]);
 
   const visibleTurns = useMemo(() => conversation?.turns ?? [], [conversation]);
-  const currentModel = models.find((model) => model.modelKey === modelKey);
   const preference =
     ROUTE_OPTIONS.find((item) => item.value === routePreference) ??
     ROUTE_OPTIONS[0]!;
@@ -732,7 +772,10 @@ export function ConversationWorkspace({
                 <p>{turn.userContent}</p>
                 {turn.requestGroup.routingDecision ? (
                   <details className="routing-details">
-                    <summary>Why this route?</summary>
+                    <summary>
+                      {turn.requestGroup.routingDecision.mode ?? 'Manual'} · Why
+                      this route?
+                    </summary>
                     <p>
                       {turn.requestGroup.routingDecision.reason ||
                         `${turn.requestGroup.routingDecision.strategy.replaceAll('_', ' ').toLowerCase()} selected ${turn.requestGroup.routingDecision.candidates.map((candidate) => `${candidate.provider.displayName} ${candidate.model.displayName}`).join(', ')} for this turn.`}
@@ -797,9 +840,10 @@ export function ConversationWorkspace({
                 <article className="message assistant-message streaming">
                   <div className="message-label">
                     <span className="model-badge">
-                      {currentModel
-                        ? `${currentModel.provider.displayName} · ${currentModel.displayName}`
+                      {pending.model
+                        ? `${pending.provider} · ${pending.model}`
                         : 'Routing response'}
+                      {pending.routingMode ? ` · ${pending.routingMode}` : ''}
                     </span>
                     <span className="streaming-dot" aria-label="Streaming" />
                   </div>
@@ -842,7 +886,10 @@ export function ConversationWorkspace({
                         : 'route-option'
                     }
                     key={option.value}
-                    onClick={() => setRoutePreference(option.value)}
+                    onClick={() => {
+                      setRoutePreference(option.value);
+                      setModelKey('');
+                    }}
                     title={option.description}
                     type="button"
                   >
@@ -890,9 +937,15 @@ export function ConversationWorkspace({
                     onChange={(event) => setModelKey(event.target.value)}
                     value={modelKey}
                   >
+                    <option value="">Auto · {preference.label}</option>
                     {models.map((model) => (
-                      <option key={model.modelKey} value={model.modelKey}>
-                        {model.provider.displayName} · {model.displayName}
+                      <option
+                        key={model.modelKey}
+                        value={model.modelKey}
+                        disabled={!canAttemptModel(model.health)}
+                      >
+                        {model.provider.displayName} · {model.displayName} ·{' '}
+                        {model.health.replaceAll('_', ' ')}
                       </option>
                     ))}
                   </select>
@@ -909,7 +962,10 @@ export function ConversationWorkspace({
               ) : (
                 <button
                   className="send-button"
-                  disabled={!content.trim() || !modelKey}
+                  disabled={
+                    !content.trim() ||
+                    !models.some((model) => canAttemptModel(model.health))
+                  }
                   type="submit"
                 >
                   Send <span aria-hidden="true">↑</span>

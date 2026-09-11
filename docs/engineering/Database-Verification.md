@@ -85,7 +85,7 @@ Each configured model must supply these fields, validated by
 | `provider` | `openai`, `anthropic`, or `gemini` |
 | `modelKey`, `providerModelId`, `displayName` | Stable provider-prefixed internal key and reviewed provider identity/name |
 | `registryVersion` | Positive integer; increment for a changed snapshot |
-| `capabilities` | Input/output modalities, files/images/search/tools booleans, context window and maximum output tokens |
+| `capabilities` | Input/output modalities, files/images/search/tools booleans, context window and maximum output tokens; real routing also requires `taskScores.general`, `qualityScore`, and `typicalLatencyMs` (see [[ADR-014-Multi-Provider-Routing]]) |
 | `pricing` | USD; explicit nonnegative decimal strings `inputPerMillionTokens` and `outputPerMillionTokens` (up to eight decimal places); HTTPS `sourceUrl` and ISO `reviewedAt` |
 | `pricingVersion`, `effectiveAt` | Explicit pricing revision and ISO effective time |
 | `regionConstraints` | Explicit string array; empty only when that is the reviewed configuration |

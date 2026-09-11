@@ -9,9 +9,10 @@ import { PrismaService } from '../database/prisma.service.js';
 import { AiRouterClient, ProviderExecutionError } from './ai-router.client.js';
 import { MockProvider } from './mock.provider.js';
 
-export function executionProvider(): 'fake' | 'openai' | undefined {
+export function executionProvider():
+  'fake' | 'openai' | 'anthropic' | 'gemini' | 'multi' | undefined {
   const mode = parseApiEnvironment(process.env).AI_EXECUTION_PROVIDER;
-  return mode === 'mock' ? 'fake' : mode === 'openai' ? 'openai' : undefined;
+  return mode === 'mock' ? 'fake' : mode === 'disabled' ? undefined : mode;
 }
 
 @Injectable()
@@ -27,7 +28,7 @@ export class ExecutionGateway {
     signal: AbortSignal,
   ): AsyncIterable<ProviderEvent> {
     if (signal.aborted) throw new ProviderExecutionError('CANCELLED');
-    if (request.provider !== executionProvider())
+    if (!executionEnabled(request.provider))
       throw new ProviderExecutionError('PROVIDER_DISABLED');
     if (request.provider === 'fake') {
       const cancel = () => {
@@ -50,6 +51,12 @@ export class ExecutionGateway {
       include: { registryEntry: true, model: true, provider: true },
     });
     if (
+      !run.provider.enabled ||
+      !run.registryEntry.enabled ||
+      run.registryEntry.retiredAt !== null
+    )
+      throw new ProviderExecutionError('PROVIDER_DISABLED');
+    if (
       run.provider.key !== request.provider ||
       run.model.modelKey !== request.modelKey
     )
@@ -66,4 +73,11 @@ export class ExecutionGateway {
     });
     yield* this.router.stream(plan, signal);
   }
+}
+
+export function executionEnabled(provider: string): boolean {
+  const mode = executionProvider();
+  return mode === 'multi'
+    ? ['openai', 'anthropic', 'gemini'].includes(provider)
+    : mode === provider;
 }

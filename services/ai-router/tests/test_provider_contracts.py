@@ -75,7 +75,11 @@ def plan(provider: str) -> ProviderExecutionPlan:
             "anthropic",
             [
                 {"type": "content_block_delta", "delta": {"text": "hi"}},
-                {"type": "message_delta", "usage": {"input_tokens": 2, "output_tokens": 1}},
+                {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn"},
+                    "usage": {"input_tokens": 2, "output_tokens": 1},
+                },
                 {"type": "message_stop"},
             ],
         ),
@@ -83,10 +87,10 @@ def plan(provider: str) -> ProviderExecutionPlan:
             GeminiAdapter,
             "gemini",
             [
-                {"event_type": "step.delta", "delta": {"content": {"text": "hi"}}},
+                {"candidates": [{"content": {"parts": [{"text": "hi"}]}}]},
                 {
-                    "event_type": "interaction.completed",
-                    "usage": {"input_tokens": 2, "output_tokens": 1},
+                    "candidates": [{"finishReason": "STOP"}],
+                    "usageMetadata": {"promptTokenCount": 2, "candidatesTokenCount": 1},
                 },
             ],
         ),
@@ -116,7 +120,10 @@ def test_adapters_hide_wire_formats_behind_normalized_events(
     ]
     assert result[1].text == "hi"
     assert result[2].input_tokens == 2
-    assert transport.requests[0][2]["model"] == "reviewed-model-id"
+    if provider == "gemini":
+        assert "reviewed-model-id:streamGenerateContent" in transport.requests[0][0]
+    else:
+        assert transport.requests[0][2]["model"] == "reviewed-model-id"
     assert "test-secret" not in repr(result)
 
 
@@ -125,7 +132,7 @@ def test_registry_requires_explicit_enablement_and_never_exposes_keys() -> None:
     states = asyncio.run(registry.health())
 
     assert {state.provider: state.status for state in states} == {
-        "openai": "ready",
+        "openai": "enabled",
         "anthropic": "disabled",
         "gemini": "disabled",
     }

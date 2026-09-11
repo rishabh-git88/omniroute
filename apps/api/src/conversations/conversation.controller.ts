@@ -1,3 +1,5 @@
+import { routingModeSchema } from '@omniroute/provider-contracts';
+import { BadRequestException } from '@nestjs/common';
 import { PassThrough, type Writable } from 'node:stream';
 import {
   Body,
@@ -31,6 +33,7 @@ interface MessageBody {
   content: string;
   idempotencyKey?: string;
   modelKey?: string;
+  routingMode?: 'economy' | 'smart' | 'max';
 }
 
 interface RenameBody {
@@ -50,6 +53,12 @@ interface TryAnotherBody {
 
 interface SelectResponseBody {
   responseId: string;
+}
+
+function routingMode(value: unknown) {
+  const result = routingModeSchema.safeParse(value ?? 'smart');
+  if (!result.success) throw new BadRequestException('Invalid routing mode');
+  return result.data;
 }
 
 function authentication(request: AuthenticatedRequest) {
@@ -158,6 +167,7 @@ export class ConversationController {
       {
         content: body.content,
         idempotencyKey: idempotencyKey(request, body),
+        routingMode: routingMode(body.routingMode),
         ...(body.modelKey === undefined ? {} : { modelKey: body.modelKey }),
       },
     );
@@ -178,6 +188,7 @@ export class ConversationController {
       turnId,
       {
         idempotencyKey: idempotencyKey(request, body),
+        routingMode: routingMode(body.routingMode),
         ...(body.modelKey === undefined ? {} : { modelKey: body.modelKey }),
       },
     );
@@ -216,11 +227,10 @@ export class ConversationStreamController {
     @Param('groupId') groupId: string,
     @Body() body: RoutingDecisionBody,
   ): Promise<void> {
-    await this.conversations.recordRoutingDecision(
-      authentication(request).workspace.id,
-      groupId,
-      body,
-    );
+    void request;
+    void groupId;
+    void body;
+    throw new BadRequestException('Routing decisions are server-owned');
   }
 
   @Post('model-responses/:responseId/try-another')
@@ -292,11 +302,19 @@ export class ConversationStreamController {
     unsubscribe = this.events.subscribe(groupId, (event) => {
       if (event.id <= latestId || closed) return;
       writeEvent(stream, event);
+      if (event.type === 'fallback.started') {
+        pending.delete(String(event.data.previousRunId));
+        pending.add(String(event.data.runId));
+      }
       if (isTerminal(event)) pending.delete(String(event.data.runId));
       if (pending.size === 0) close();
     });
     for (const event of this.events.history(groupId)) {
       writeEvent(stream, event);
+      if (event.type === 'fallback.started') {
+        pending.delete(String(event.data.previousRunId));
+        pending.add(String(event.data.runId));
+      }
       if (isTerminal(event)) pending.delete(String(event.data.runId));
     }
     if (

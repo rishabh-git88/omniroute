@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { parseApiEnvironment } from '@omniroute/config/api';
 import {
   providerEventSchema,
+  providerHealthSchema,
+  routingDecisionSchema,
+  routingRequestSchema,
   providerExecutionPlanSchema,
   type ProviderEvent,
   type ProviderExecutionPlan,
@@ -107,13 +110,67 @@ export async function* routerStream(
 
 @Injectable()
 export class AiRouterClient {
+  public async health() {
+    const value = await this.json('/providers/health');
+    return providerHealthSchema.array().parse(value);
+  }
+
+  public async route(request: Record<string, unknown>) {
+    return routingDecisionSchema.parse(
+      await this.json(
+        '/routing/decisions',
+        routingRequestSchema.parse(request),
+      ),
+    );
+  }
+
+  private async json(
+    path: string,
+    body?: Record<string, unknown>,
+  ): Promise<unknown> {
+    const config = parseApiEnvironment(process.env);
+    if (!config.AI_ROUTER_INTERNAL_TOKEN)
+      throw new ProviderExecutionError('ROUTER_AUTH_FAILED');
+    try {
+      const response = await fetch(new URL(path, config.AI_ROUTER_URL), {
+        method: body ? 'POST' : 'GET',
+        headers: {
+          authorization: `Bearer ${config.AI_ROUTER_INTERNAL_TOKEN}`,
+          'content-type': 'application/json',
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(
+          Math.min(5000, config.AI_ROUTER_TIMEOUT_MS),
+        ),
+        redirect: 'error',
+      });
+      if (!response.ok)
+        throw new ProviderExecutionError(
+          response.status === 401
+            ? 'ROUTER_AUTH_FAILED'
+            : response.status === 422
+              ? 'NO_ELIGIBLE_MODEL'
+              : 'ROUTER_UNAVAILABLE',
+        );
+      const text = await response.text();
+      if (text.length > 262144)
+        throw new ProviderExecutionError('ROUTER_PROTOCOL_ERROR');
+      return JSON.parse(text);
+    } catch (error) {
+      if (error instanceof ProviderExecutionError) throw error;
+      throw new ProviderExecutionError('ROUTER_UNAVAILABLE');
+    }
+  }
+
   public stream(
     plan: ProviderExecutionPlan,
     signal: AbortSignal,
   ): AsyncIterable<ProviderEvent> {
     const config = parseApiEnvironment(process.env);
     if (
-      config.AI_EXECUTION_PROVIDER !== 'openai' ||
+      !['openai', 'anthropic', 'gemini', 'multi'].includes(
+        config.AI_EXECUTION_PROVIDER,
+      ) ||
       !config.AI_ROUTER_INTERNAL_TOKEN
     )
       throw new ProviderExecutionError('PROVIDER_DISABLED');

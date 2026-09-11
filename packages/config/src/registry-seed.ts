@@ -1,8 +1,28 @@
 import { z } from 'zod';
 
 const price = z.string().regex(/^(0|[1-9]\d*)(\.\d{1,8})?$/);
-const capabilities = z
+export const registryCapabilitiesSchema = z
   .strictObject({
+    taskScores: z
+      .partialRecord(
+        z.enum([
+          'general',
+          'coding',
+          'debugging',
+          'architecture',
+          'reasoning',
+          'writing',
+          'summarization',
+          'research',
+          'long-context',
+          'structured-data',
+          'multimodal',
+        ]),
+        z.number().min(0).max(100),
+      )
+      .optional(),
+    qualityScore: z.number().min(0).max(100).optional(),
+    typicalLatencyMs: z.number().int().positive().max(300000).optional(),
     modalities: z.strictObject({
       input: z.array(z.string().min(1)).min(1),
       output: z.array(z.string().min(1)).min(1),
@@ -19,10 +39,10 @@ const model = z
   .strictObject({
     provider: z.enum(['openai', 'anthropic', 'gemini']),
     modelKey: z.string().regex(/^[a-z0-9][a-z0-9:._-]*$/),
-    providerModelId: z.string().trim().min(1),
+    providerModelId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/),
     displayName: z.string().trim().min(1),
     registryVersion: z.number().int().positive(),
-    capabilities,
+    capabilities: registryCapabilitiesSchema,
     pricing: z.strictObject({
       currency: z.literal('USD'),
       inputPerMillionTokens: price,
@@ -50,4 +70,21 @@ export function parseRegistrySeed(value: unknown): RegistrySeedModel[] {
       'Invalid model registry seed: explicit reviewed pricing, capabilities, identities and versions are required.',
     );
   return result.data.models;
+}
+
+/** Production routing requires reviewed quality and latency as well as valid billing data. */
+export function validateRoutingRegistry(value: unknown): RegistrySeedModel {
+  const entry = model.parse(value);
+  if (
+    entry.capabilities.taskScores?.general === undefined ||
+    entry.capabilities.qualityScore === undefined ||
+    entry.capabilities.typicalLatencyMs === undefined
+  )
+    throw new Error('Reviewed routing metadata is required');
+  if (
+    !entry.capabilities.modalities.input.includes('text') ||
+    !entry.capabilities.modalities.output.includes('text')
+  )
+    throw new Error('Text execution capabilities are required');
+  return entry;
 }

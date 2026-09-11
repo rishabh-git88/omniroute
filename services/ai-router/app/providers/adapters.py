@@ -1,13 +1,44 @@
+import asyncio
+import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from typing import Any, Literal
+from urllib.parse import quote
 
-from app.contracts import NormalizedUsage, ProviderEvent, ProviderExecutionPlan, ProviderHealth
+from app.contracts import (
+    HealthStatus,
+    NormalizedUsage,
+    ProviderEvent,
+    ProviderExecutionPlan,
+    ProviderHealth,
+)
 from app.providers.base import ProviderAdapter, ProviderTransport, ProviderTransportError
 
 
+def normalized_failure(
+    plan: ProviderExecutionPlan, code: str, retryable: bool = False
+) -> ProviderEvent:
+    return ProviderEvent(
+        type="run.failed",
+        run_id=plan.request.run_id,
+        code=code,
+        message="Generation could not complete",
+        retryable=retryable,
+    )
+
+
+def error_code(value: str) -> tuple[str, bool]:
+    if value in {"rate_limit_error", "rate_limit_exceeded", "RESOURCE_EXHAUSTED"}:
+        return "RATE_LIMITED", True
+    if value in {"overloaded_error", "server_error", "api_error", "UNAVAILABLE", "INTERNAL"}:
+        return "PROVIDER_TEMPORARY_ERROR", True
+    if value in {"authentication_error", "invalid_api_key", "UNAUTHENTICATED", "PERMISSION_DENIED"}:
+        return "PROVIDER_AUTH_FAILED", False
+    return "PROVIDER_ERROR", False
+
+
 class StreamingAdapter(ProviderAdapter):
-    """Common lifecycle and local cancellation; subclasses only translate provider wire shapes."""
+    """One state object per stream; cumulative usage must never leak between concurrent runs."""
 
     api_url: str
 
@@ -15,7 +46,26 @@ class StreamingAdapter(ProviderAdapter):
         self._enabled = enabled
         self._api_key = api_key
         self._transport = transport
-        self._cancelled: set[str] = set()
+        self._tasks: dict[str, asyncio.Task[Any]] = {}
+        self.cooldown_seconds = 30.0
+        self._observed: HealthStatus = "enabled"
+        self._observed_at = 0.0
+        self._latency: int | None = None
+
+    def observe(self, code: str | None, latency_ms: int) -> None:
+        states: dict[str, HealthStatus] = {
+            "RATE_LIMITED": "rate_limited",
+            "PROVIDER_TIMEOUT": "timed_out",
+            "PROVIDER_AUTH_FAILED": "missing_credentials",
+            "PROVIDER_TEMPORARY_ERROR": "temporarily_unhealthy",
+            "NETWORK_ERROR": "temporarily_unhealthy",
+            "STREAM_TRUNCATED": "temporarily_unhealthy",
+            "PROVIDER_PROTOCOL_ERROR": "temporarily_unhealthy",
+        }
+        if code is None or code in states:
+            self._observed = states.get(code or "", "available")
+            self._observed_at = time.monotonic()
+            self._latency = latency_ms
 
     async def generate(self, plan: ProviderExecutionPlan) -> tuple[str, NormalizedUsage]:
         content = ""
@@ -27,59 +77,122 @@ class StreamingAdapter(ProviderAdapter):
                 raise RuntimeError("Provider generation failed")
             if event.type == "usage.updated":
                 usage = NormalizedUsage(
-                    input_tokens=event.input_tokens, output_tokens=event.output_tokens
+                    input_tokens=event.input_tokens,
+                    output_tokens=event.output_tokens,
+                    total_tokens=event.total_tokens,
                 )
         return content, usage
 
     async def capabilities(self, plan: ProviderExecutionPlan) -> dict[str, object]:
-        self._validate(plan)
         return plan.model.capabilities
 
     async def health(self) -> ProviderHealth:
-        return ProviderHealth(
-            provider=self.provider,
-            status="ready" if self._enabled and self._api_key else "disabled",
-        )
+        status: HealthStatus = self._observed
+        if not self._enabled:
+            status = "disabled"
+        elif not self._api_key:
+            status = "missing_credentials"
+        elif time.monotonic() - self._observed_at > (
+            300 if status == "available" else self.cooldown_seconds
+        ):
+            status = "enabled"  # configured, but unobserved; an actual request may probe it
+        return ProviderHealth(provider=self.provider, status=status, latency_ms=self._latency)
 
     async def cancel(self, run_id: str) -> None:
-        self._cancelled.add(run_id)
+        task = self._tasks.get(run_id)
+        if task:
+            task.cancel()
+
+    def _url(self, plan: ProviderExecutionPlan) -> str:
+        return self.api_url
 
     async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
-        self._validate(plan)
-        yield ProviderEvent(type="run.started", run_id=plan.request.run_id)
-        try:
-            async with aclosing(
-                self._transport.stream_sse(self.api_url, self._headers(), self._payload(plan))
-            ) as upstream:
-                async for raw in upstream:
-                    if str(plan.request.run_id) in self._cancelled:
-                        self._cancelled.discard(str(plan.request.run_id))
-                        yield ProviderEvent(
-                            type="run.failed",
-                            run_id=plan.request.run_id,
-                            code="CANCELLED",
-                            message="Generation cancelled",
-                            retryable=False,
-                        )
-                        return
-                    for event in self._normalize(raw, plan):
-                        yield event
-                        if event.type in {"run.completed", "run.failed"}:
-                            return
-        except ProviderTransportError as error:
-            yield ProviderEvent(
-                type="run.failed",
-                run_id=plan.request.run_id,
-                code=f"HTTP_{error.status_code}" if error.status_code else "NETWORK_ERROR",
-                message=error.safe_message,
-                retryable=error.status_code is None or error.status_code >= 500,
-            )
-
-    def _validate(self, plan: ProviderExecutionPlan) -> None:
         if not self._enabled or not self._api_key:
-            raise RuntimeError(f"{self.provider} is disabled or has no server-side credential")
+            yield normalized_failure(
+                plan, "PROVIDER_DISABLED" if not self._enabled else "PROVIDER_MISSING_CREDENTIALS"
+            )
+            return
         if plan.model.provider != self.provider or plan.request.provider != self.provider:
-            raise ValueError("Registry provider does not match the requested adapter")
+            yield normalized_failure(plan, "REGISTRY_MISMATCH")
+            return
+        task = asyncio.current_task()
+        if task:
+            self._tasks[str(plan.request.run_id)] = task
+        state: dict[str, Any] = {}
+        try:
+            yield ProviderEvent(type="run.started", run_id=plan.request.run_id)
+            async with asyncio.timeout(90):
+                async with aclosing(
+                    self._transport.stream_sse(
+                        self._url(plan), self._headers(), self._payload(plan)
+                    )
+                ) as upstream:
+                    async for raw in upstream:
+                        for event in self._normalize(raw, plan, state):
+                            if event.type == "usage.updated":
+                                state["usage_final"] = event.usage_final is not False
+                                for key in ("input_tokens", "output_tokens"):
+                                    value = getattr(event, key)
+                                    if value is not None:
+                                        if value < state.get(key, 0):
+                                            raise ValueError("Usage decreased")
+                                        state[key] = value
+                                    setattr(event, key, state.get(key))
+                                if (
+                                    event.input_tokens is not None
+                                    and event.output_tokens is not None
+                                ):
+                                    event.total_tokens = event.input_tokens + event.output_tokens
+                            if event.type == "run.completed":
+                                event.finish_reason = state.get(
+                                    "finish_reason", event.finish_reason
+                                )
+                                if (
+                                    "input_tokens" not in state
+                                    or "output_tokens" not in state
+                                    or not state.get("usage_final")
+                                ):
+                                    yield normalized_failure(plan, "USAGE_MISSING", True)
+                                    return
+                            yield event
+                            if event.type in {"run.completed", "run.failed"}:
+                                return
+            yield normalized_failure(plan, "STREAM_TRUNCATED", True)
+        except TimeoutError:
+            yield normalized_failure(plan, "PROVIDER_TIMEOUT", True)
+        except ProviderTransportError as error:
+            status = error.status_code
+            code = (
+                "PROVIDER_TIMEOUT"
+                if status == 408
+                else "RATE_LIMITED"
+                if status == 429
+                else "PROVIDER_AUTH_FAILED"
+                if status in {401, 403}
+                else "PROVIDER_UNAVAILABLE"
+                if status == 404
+                else "PROVIDER_TEMPORARY_ERROR"
+                if status and status >= 500
+                else "NETWORK_ERROR"
+                if status is None
+                else "PROVIDER_INVALID_REQUEST"
+            )
+            yield normalized_failure(
+                plan,
+                code,
+                code
+                in {
+                    "PROVIDER_TIMEOUT",
+                    "RATE_LIMITED",
+                    "PROVIDER_TEMPORARY_ERROR",
+                    "NETWORK_ERROR",
+                    "PROVIDER_UNAVAILABLE",
+                },
+            )
+        except (ValueError, TypeError, KeyError, AttributeError):
+            yield normalized_failure(plan, "PROVIDER_PROTOCOL_ERROR", True)
+        finally:
+            self._tasks.pop(str(plan.request.run_id), None)
 
     def _headers(self) -> dict[str, str]:
         raise NotImplementedError
@@ -87,7 +200,9 @@ class StreamingAdapter(ProviderAdapter):
     def _payload(self, plan: ProviderExecutionPlan) -> dict[str, Any]:
         raise NotImplementedError
 
-    def _normalize(self, raw: dict[str, Any], plan: ProviderExecutionPlan) -> list[ProviderEvent]:
+    def _normalize(
+        self, raw: dict[str, Any], plan: ProviderExecutionPlan, state: dict[str, Any]
+    ) -> list[ProviderEvent]:
         raise NotImplementedError
 
 
@@ -118,7 +233,9 @@ class OpenAIAdapter(StreamingAdapter):
             input_tokens=payload.get("input_tokens"), output_tokens=payload.get("output_tokens")
         )
 
-    def _normalize(self, raw: dict[str, Any], plan: ProviderExecutionPlan) -> list[ProviderEvent]:
+    def _normalize(
+        self, raw: dict[str, Any], plan: ProviderExecutionPlan, state: dict[str, Any]
+    ) -> list[ProviderEvent]:
         kind = raw.get("type", "")
         response = raw.get("response", {})
         if kind == "response.output_text.delta":
@@ -136,10 +253,24 @@ class OpenAIAdapter(StreamingAdapter):
                 )
             ]
         if kind in {"response.completed", "response.incomplete"}:
+            if (
+                kind == "response.incomplete"
+                and (response.get("incomplete_details") or {}).get("reason") != "max_output_tokens"
+            ):
+                return [
+                    ProviderEvent(
+                        type="usage.updated",
+                        run_id=plan.request.run_id,
+                        usage_final=True,
+                        **self.usage(response.get("usage") or {}).model_dump(exclude_none=True),
+                    ),
+                    normalized_failure(plan, "SAFETY_STOP"),
+                ]
             usage = self.usage(response.get("usage") or {})
             return [
                 ProviderEvent(
                     type="usage.updated",
+                    usage_final=True,
                     run_id=plan.request.run_id,
                     **usage.model_dump(exclude_none=True),
                 ),
@@ -157,19 +288,16 @@ class OpenAIAdapter(StreamingAdapter):
                 ),
             ]
         if kind in {"response.failed", "error"}:
+            error = response.get("error") or raw.get("error") or raw
+            code, retryable = error_code(error.get("code") or error.get("type", ""))
             return [
                 ProviderEvent(
                     type="usage.updated",
+                    usage_final=True,
                     run_id=plan.request.run_id,
                     **self.usage(response.get("usage") or {}).model_dump(exclude_none=True),
                 ),
-                ProviderEvent(
-                    type="run.failed",
-                    run_id=plan.request.run_id,
-                    code="OPENAI_ERROR",
-                    message="OpenAI generation failed",
-                    retryable=False,
-                ),
+                normalized_failure(plan, code, retryable),
             ]
         return []
 
@@ -214,8 +342,25 @@ class AnthropicAdapter(StreamingAdapter):
             input_tokens=payload.get("input_tokens"), output_tokens=payload.get("output_tokens")
         )
 
-    def _normalize(self, raw: dict[str, Any], plan: ProviderExecutionPlan) -> list[ProviderEvent]:
+    def _normalize(
+        self, raw: dict[str, Any], plan: ProviderExecutionPlan, state: dict[str, Any]
+    ) -> list[ProviderEvent]:
         kind = raw.get("type", "")
+        if kind == "message_start":
+            message = raw.get("message", {})
+            return [
+                ProviderEvent(
+                    type="run.started",
+                    run_id=plan.request.run_id,
+                    provider_request_id=message.get("id"),
+                ),
+                ProviderEvent(
+                    type="usage.updated",
+                    usage_final=False,
+                    run_id=plan.request.run_id,
+                    **self.usage(message.get("usage") or {}).model_dump(exclude_none=True),
+                ),
+            ]
         if kind == "content_block_delta":
             return [
                 ProviderEvent(
@@ -225,84 +370,137 @@ class AnthropicAdapter(StreamingAdapter):
                 )
             ]
         if kind == "message_delta":
+            reason = raw.get("delta", {}).get("stop_reason")
+            if reason:
+                state["finish_reason"] = (
+                    "length"
+                    if reason == "max_tokens"
+                    else "stop"
+                    if reason in {"end_turn", "stop_sequence"}
+                    else reason
+                )
             usage = self.usage(raw.get("usage", {}))
             return [
                 ProviderEvent(
                     type="usage.updated",
+                    usage_final=bool(reason) and "output_tokens" in raw.get("usage", {}),
                     run_id=plan.request.run_id,
                     **usage.model_dump(exclude_none=True),
                 )
             ]
         if kind == "message_stop":
+            if state.get("finish_reason") not in {"stop", "length"}:
+                return [
+                    normalized_failure(
+                        plan,
+                        "SAFETY_STOP"
+                        if state.get("finish_reason") == "refusal"
+                        else "PROVIDER_PROTOCOL_ERROR",
+                    )
+                ]
             return [
                 ProviderEvent(
                     type="run.completed", run_id=plan.request.run_id, finish_reason="stop"
                 )
             ]
         if kind == "error":
-            return [
-                ProviderEvent(
-                    type="run.failed",
-                    run_id=plan.request.run_id,
-                    code="ANTHROPIC_ERROR",
-                    message="Anthropic generation failed",
-                    retryable=False,
-                )
-            ]
+            code, retryable = error_code(raw.get("error", {}).get("type", ""))
+            return [normalized_failure(plan, code, retryable)]
         return []
 
 
 class GeminiAdapter(StreamingAdapter):
     provider: Literal["gemini"] = "gemini"
-    api_url = "https://generativelanguage.googleapis.com/v1beta/interactions?alt=sse"
+    api_url = "https://generativelanguage.googleapis.com/v1beta/models"
+
+    def _url(self, plan: ProviderExecutionPlan) -> str:
+        model = quote(plan.model.provider_model_id, safe="")
+        return f"{self.api_url}/{model}:streamGenerateContent?alt=sse"
 
     def _headers(self) -> dict[str, str]:
         return {"x-goog-api-key": str(self._api_key), "Content-Type": "application/json"}
 
     def _payload(self, plan: ProviderExecutionPlan) -> dict[str, Any]:
-        return {
-            "model": plan.model.provider_model_id,
-            "input": [
-                {"role": item.role, "content": item.content}
-                for item in plan.request.context.messages
+        body: dict[str, Any] = {
+            "contents": [
+                {
+                    "role": "model" if m.role == "assistant" else "user",
+                    "parts": [{"text": m.content}],
+                }
+                for m in plan.request.context.messages
+                if m.role != "system"
             ],
-            "stream": True,
+            "generationConfig": {
+                "maxOutputTokens": plan.request.max_output_tokens,
+                "candidateCount": 1,
+            },
         }
+        systems = [m.content for m in plan.request.context.messages if m.role == "system"]
+        if systems:
+            body["systemInstruction"] = {"parts": [{"text": "\n\n".join(systems)}]}
+        if plan.request.temperature is not None:
+            body["generationConfig"]["temperature"] = plan.request.temperature
+        return body
 
     def usage(self, payload: dict[str, Any]) -> NormalizedUsage:
-        return NormalizedUsage(
-            input_tokens=payload.get("input_tokens"), output_tokens=payload.get("output_tokens")
-        )
+        output = payload.get("candidatesTokenCount")
+        if output is not None:
+            output += payload.get("thoughtsTokenCount", 0)
+        return NormalizedUsage(input_tokens=payload.get("promptTokenCount"), output_tokens=output)
 
-    def _normalize(self, raw: dict[str, Any], plan: ProviderExecutionPlan) -> list[ProviderEvent]:
-        kind = raw.get("event_type", "")
-        if kind == "step.delta":
-            text = raw.get("delta", {}).get("content", {}).get("text", "")
-            return (
-                [ProviderEvent(type="content.delta", run_id=plan.request.run_id, text=text)]
-                if text
-                else []
+    def _normalize(
+        self, raw: dict[str, Any], plan: ProviderExecutionPlan, state: dict[str, Any]
+    ) -> list[ProviderEvent]:
+        events = []
+        if raw.get("responseId") and not state.get("request_id"):
+            state["request_id"] = raw["responseId"]
+            events.append(
+                ProviderEvent(
+                    type="run.started",
+                    run_id=plan.request.run_id,
+                    provider_request_id=raw["responseId"],
+                )
             )
-        if kind == "interaction.completed":
-            usage = self.usage(raw.get("usage", {}))
-            return [
+        if raw.get("error"):
+            code, retryable = error_code(raw["error"].get("status", ""))
+            return [normalized_failure(plan, code, retryable)]
+        if raw.get("promptFeedback", {}).get("blockReason"):
+            return [normalized_failure(plan, "SAFETY_STOP")]
+        candidates = raw.get("candidates", [])
+        if len(candidates) > 1:
+            raise ValueError("Unexpected candidates")
+        for candidate in candidates:
+            for part in candidate.get("content", {}).get("parts", []):
+                if part.get("text") and not part.get("thought"):
+                    events.append(
+                        ProviderEvent(
+                            type="content.delta", run_id=plan.request.run_id, text=part["text"]
+                        )
+                    )
+            reason = candidate.get("finishReason")
+            if reason:
+                state["finish_reason"] = (
+                    "stop" if reason == "STOP" else "length" if reason == "MAX_TOKENS" else "safety"
+                )
+        if "usageMetadata" in raw:
+            events.append(
                 ProviderEvent(
                     type="usage.updated",
+                    usage_final=bool(state.get("finish_reason"))
+                    and "candidatesTokenCount" in raw["usageMetadata"],
                     run_id=plan.request.run_id,
-                    **usage.model_dump(exclude_none=True),
-                ),
-                ProviderEvent(
-                    type="run.completed", run_id=plan.request.run_id, finish_reason="stop"
-                ),
-            ]
-        if kind == "interaction.failed":
-            return [
-                ProviderEvent(
-                    type="run.failed",
-                    run_id=plan.request.run_id,
-                    code="GEMINI_ERROR",
-                    message="Gemini generation failed",
-                    retryable=False,
+                    **self.usage(raw["usageMetadata"]).model_dump(exclude_none=True),
                 )
-            ]
-        return []
+            )
+        if state.get("finish_reason"):
+            if state["finish_reason"] == "safety":
+                events.append(normalized_failure(plan, "SAFETY_STOP"))
+            elif "usageMetadata" in raw:
+                events.append(
+                    ProviderEvent(
+                        type="run.completed",
+                        run_id=plan.request.run_id,
+                        finish_reason=state["finish_reason"],
+                    )
+                )
+        return events

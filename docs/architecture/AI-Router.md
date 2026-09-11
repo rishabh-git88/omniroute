@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Provide a separate FastAPI/Pydantic orchestration boundary for Single AI and Compare 3 execution while keeping provider APIs outside NestJS conversation business logic. NestJS owns selection, context snapshots, durable run state, and credits. In V1, users choose providers; deterministic capability-aware ranking may assist. ML-based Auto Pick is explicitly later.
+Provide a separate FastAPI/Pydantic orchestration boundary for Single AI and Compare 3 execution while keeping provider APIs outside NestJS conversation business logic. NestJS owns selection, context snapshots, durable run state, and credits. Users may select an eligible model or use deterministic Economy/Smart/Max routing. ML-based Auto Pick is explicitly later.
 
 ## Complete routing flow
 
@@ -54,7 +54,7 @@ Inputs: an authorized canonical request, desired mode/providers, task/file metad
 
 ## Failure behavior
 
-One provider failure does not fail its peers. Honor `Retry-After`; use bounded network/5xx retries with jitter and circuit breaking; never retry invalid requests. Automatic fallback requires prior opt-in.
+Provider failures remain isolated to their attempts. No automatic same-provider retry occurs. Automatic routing modes permit bounded fallback only for approved failure classes before visible output; explicit model choices are never silently replaced.
 
 ## Security considerations
 
@@ -73,42 +73,39 @@ execution plan and instantiates only individually enabled adapters. It does not
 read provider prices or model capabilities from code, mutate conversation or
 credit state, or expose credentials. See [[ADR-008-Provider-Adapter-Contract]].
 
-### Initial deterministic algorithm
+### Connected deterministic routing and execution
 
-`POST /routing/decisions` is a pure, observable rule engine. A keyword-only
-Task Analyzer categorizes prompts as coding, debugging, architecture, writing,
-summarization, research, reasoning, general, multimodal, or long-context. It
-never calls an AI provider to make that classification.
+NestJS freezes context and sends server-owned registry snapshots and the frontend
+`routingMode` to authenticated `POST /routing/decisions`. FastAPI uses its own
+observed health and classifies the task without an LLM call. Disabled, malformed,
+region-incompatible, capability-incompatible, or context-incompatible candidates
+are excluded before scoring. Required quality, suitability, latency, and exact
+pricing metadata lives in the versioned registry.
 
-The router first excludes disabled/unavailable providers and models that do not
-meet required tools, multimodal, or context-window constraints. It ranks only
-eligible versioned registry snapshots: per-task suitability scores, context
-limits, latency characteristics, and token prices are registry data.
+- Economy chooses the exact lowest estimated cost; zero is a valid price.
+- Smart weights suitability 40%, quality 25%, speed 10%, health 10%, affordability
+  10%, and context headroom 5%.
+- Max weights quality 60% and suitability 40%, enforcing the same eligibility,
+  credit, context, and admission limits.
 
-- **Economy:** strongly favors lower available estimated cost, then latency.
-- **Smart:** balances reviewed task score, estimated cost, and latency.
-- **Max:** favors reviewed task score and context capacity, with a small
-  latency penalty.
+[[ADR-014-Multi-Provider-Routing]] defines normalization, ties, task precedence,
+registry validation, and configuration. Explicit model selection overrides
+ranking only after eligibility checks and disables automatic fallback.
 
-Explicit provider/model preference is a deterministic boost. The output has a
-selected target, numeric score, explanation, fallbacks, and pricing-versioned
-estimate where supplied. NestJS persists it transactionally to the request
-group's `routing_decisions`; FastAPI remains database-free. Missing required
-capabilities or a healthy eligible model fails closed. Automatic fallback
-execution still requires user opt-in.
+NestJS persists the decision, reserves credits, and sends canonical plans to
+`POST /providers/stream`. OpenAI, Anthropic, and Gemini stream through this same
+boundary. Provider health distinguishes unobserved configuration from measured
+availability and temporary failures. Router process concurrency is bounded.
 
-### Connected execution boundary
-
-NestJS sends the immutable canonical request and registry envelope to authenticated
-`POST /providers/stream`. The current connected path executes one selected OpenAI
-model, preserving canonical context and capturing normalized terminal results.
-See [[ADR-013-Authenticated-Single-Provider-Execution]].
-
-The existing fallback engine remains isolated contract-tested logic. Its HTTP
-execution endpoint is authenticated and returns 501 while bounded single-provider
-execution is being established. Real alternatives and Compare 3 are not enabled
-in this milestone. Automatic routing scores are still separate from the connected
-user-selected execution path.
+Automatic modes permit up to two eligible fallback attempts before visible
+output for specific availability/transport failures. Each has its own persisted
+run/reservation and identical frozen context. Validation, authentication, safety,
+cancellation, admission, and output-limit errors never trigger fallback. NestJS
+owns fallback accounting; the legacy fallback HTTP endpoint remains disabled.
+Real Compare 3 and alternatives remain disabled pending independent run/replay
+and accounting acceptance. See [[ADR-013-Authenticated-Single-Provider-Execution]]
+for the retained execution boundary and [[ADR-014-Multi-Provider-Routing]] for
+its extension and operational limits.
 
 ## Related notes
 
@@ -116,5 +113,5 @@ user-selected execution path.
 
 ## Open Questions
 
-- What deterministic ranking weights apply to capability, cost, latency, and availability in V1?
-- Does “provider fallback” in V1 mean only user-triggered alternatives, opt-in automatic fallback, or both?
+- Which reviewed model quality/task scores and operational load limits should staging use?
+- How will shared health and execution recovery coordinate multiple replicas?

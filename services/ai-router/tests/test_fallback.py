@@ -56,7 +56,7 @@ class IntentionalFailureAdapter(ProviderAdapter):
         return NormalizedUsage()
 
     async def health(self) -> ProviderHealth:
-        return ProviderHealth(provider="openai", status="unavailable")
+        return ProviderHealth(provider="openai", status="ready")
 
     async def cancel(self, run_id: str) -> None:
         return None
@@ -155,3 +155,47 @@ def test_failure_classification(code: str, classification: str) -> None:
         type="run.failed", run_id=uuid4(), code=code, message="safe", retryable=True
     )
     assert classify_failure(event) == classification
+
+
+def test_disabled_primary_moves_to_eligible_fallback_without_dispatch() -> None:
+    class Disabled(IntentionalFailureAdapter):
+        async def health(self) -> ProviderHealth:
+            return ProviderHealth(provider="openai", status="disabled")
+
+        async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
+            raise AssertionError("Disabled provider was contacted")
+            yield ProviderEvent(type="run.started", run_id=plan.request.run_id)
+
+    async def run() -> None:
+        primary = plan("openai")
+        executor = FallbackExecutor(
+            {"openai": Disabled(), "anthropic": SuccessfulFallbackAdapter()}
+        )
+        events = [
+            e
+            async for e in executor.stream(
+                FallbackExecutionRequest(
+                    primary=primary,
+                    fallbacks=[plan("anthropic", str(primary.request.context_snapshot_id))],
+                    allow_fallback=True,
+                )
+            )
+        ]
+        assert any(e.type == "fallback.started" for e in events)
+        assert events[-1].type == "run.completed"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "code", ["HTTP_400", "HTTP_401", "HTTP_403", "SAFETY_STOP", "CANCELLED", "REGISTRY_MISMATCH"]
+)
+def test_nonretryable_failures_are_not_fallback_classes(code: str) -> None:
+    assert (
+        classify_failure(
+            ProviderEvent(
+                type="run.failed", run_id=uuid4(), code=code, message="safe", retryable=False
+            )
+        )
+        is None
+    )

@@ -123,13 +123,29 @@ class FallbackEvent(ContractModel):
 
 
 class NormalizedUsage(ContractModel):
+    total_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
     input_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
     output_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
 
 
+HealthStatus = Literal[
+    "disabled",
+    "enabled",
+    "missing_credentials",
+    "temporarily_unhealthy",
+    "rate_limited",
+    "timed_out",
+    "available",
+    "ready",
+    "degraded",
+    "unavailable",
+]
+
+
 class ProviderHealth(ContractModel):
     provider: Literal["openai", "anthropic", "gemini"]
-    status: Literal["disabled", "ready", "unavailable"]
+    status: HealthStatus
+    latency_ms: int | None = None
 
 
 class ProviderEvent(ContractModel):
@@ -147,6 +163,8 @@ class ProviderEvent(ContractModel):
     text: str | None = None
     input_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
     output_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
+    total_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
+    usage_final: bool | None = None
     finish_reason: str | None = None
     code: str | None = None
     message: str | None = None
@@ -164,6 +182,7 @@ TaskCategory = Literal[
     "general",
     "multimodal",
     "long-context",
+    "structured-data",
 ]
 RoutingMode = Literal["economy", "smart", "max"]
 
@@ -181,11 +200,12 @@ class RoutingModelSnapshot(ContractModel):
     pricing: dict[str, object] | None = None
     pricing_version: str | None = None
     latency: dict[str, object] | None = None
+    region_constraints: list[str] = []
 
 
 class ProviderHealthSnapshot(ContractModel):
     provider: Literal["openai", "anthropic", "gemini", "fake"]
-    status: Literal["ready", "degraded", "unavailable", "disabled"]
+    status: HealthStatus
     latency_ms: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
 
 
@@ -199,6 +219,7 @@ class RoutingRequest(ContractModel):
     context_tokens: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] = 0
     max_output_tokens: Annotated[int, Field(gt=0, le=9007199254740991, strict=True)] = 512
     requires_tools: bool = False
+    region: str | None = None
     requires_multimodal: bool = False
     user_preferred_provider: str | None = None
     user_preferred_model: str | None = None

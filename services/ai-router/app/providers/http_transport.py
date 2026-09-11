@@ -24,6 +24,8 @@ class HttpTransport:
             raise ProviderTransportError(
                 error.response.status_code, "Provider request failed"
             ) from error
+        except httpx.TimeoutException as error:
+            raise TimeoutError("Provider timed out") from error
         except httpx.HTTPError as error:
             raise ProviderTransportError(None, "Provider connection failed") from error
 
@@ -60,5 +62,7 @@ class HttpTransport:
             raise ProviderTransportError(
                 error.response.status_code, "Provider request failed"
             ) from error
+        except httpx.TimeoutException as error:
+            raise TimeoutError("Provider timed out") from error
         except httpx.HTTPError as error:
             raise ProviderTransportError(None, "Provider connection failed") from error

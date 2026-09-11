@@ -6,7 +6,7 @@ const environmentSchema = z.enum(['development', 'test', 'production']);
 const apiEnvironmentSchema = z.object({
   AI_ROUTER_URL: httpOriginSchema.default('http://localhost:8001'),
   AI_EXECUTION_PROVIDER: z
-    .enum(['disabled', 'mock', 'openai'])
+    .enum(['disabled', 'mock', 'openai', 'anthropic', 'gemini', 'multi'])
     .default('disabled'),
   AI_ROUTER_INTERNAL_TOKEN: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -18,6 +18,7 @@ const apiEnvironmentSchema = z.object({
     .min(100)
     .max(300_000)
     .default(95_000),
+  AI_ROUTING_REGION: z.string().min(1).optional(),
   API_HOST: z.string().min(1).default('0.0.0.0'),
   API_PORT: z.coerce.number().int().positive().max(65_535).default(4000),
   CORS_ORIGIN: httpOriginSchema.default('http://localhost:3000'),
@@ -139,7 +140,9 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
   )
     throw new EnvironmentValidationError(['AI_EXECUTION_PROVIDER']);
   if (
-    result.data.AI_EXECUTION_PROVIDER === 'openai' &&
+    ['openai', 'anthropic', 'gemini', 'multi'].includes(
+      result.data.AI_EXECUTION_PROVIDER,
+    ) &&
     (!result.data.AI_ROUTER_INTERNAL_TOKEN || !source.AI_ROUTER_URL)
   )
     throw new EnvironmentValidationError([

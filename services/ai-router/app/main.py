@@ -12,6 +12,7 @@ from app.contracts import (
     ProviderEvent,
     ProviderExecutionPlan,
     ProviderHealth,
+    ProviderHealthSnapshot,
     RoutingDecision,
     RoutingRequest,
 )
@@ -61,6 +62,7 @@ async def internal_auth(request: Request) -> None:
 @app.get(
     "/providers/health",
     response_model=list[ProviderHealth],
+    response_model_exclude_none=True,
     tags=["providers"],
     dependencies=[Depends(internal_auth)],
 )
@@ -73,14 +75,23 @@ async def provider_health() -> list[ProviderHealth]:
 async def generate(plan: ProviderExecutionPlan) -> dict[str, object]:
     content = ""
     usage: dict[str, object] = {}
+    completion: dict[str, object] = {}
     async for event in execute(plan, providers, settings):
         if event.type == "content.delta":
             content += event.text or ""
         elif event.type == "usage.updated":
-            usage = {"inputTokens": event.input_tokens, "outputTokens": event.output_tokens}
+            usage = {
+                "inputTokens": event.input_tokens,
+                "outputTokens": event.output_tokens,
+                "totalTokens": event.total_tokens,
+            }
+        elif event.type == "run.started" and event.provider_request_id:
+            completion["providerRequestId"] = event.provider_request_id
+        elif event.type == "run.completed":
+            completion["finishReason"] = event.finish_reason
         elif event.type == "run.failed":
             raise HTTPException(status_code=502, detail=event.code)
-    return {"content": content, "usage": usage}
+    return {"content": content, "usage": usage, **completion}
 
 
 @app.post("/providers/stream", tags=["providers"], dependencies=[Depends(internal_auth)])
@@ -120,9 +131,13 @@ async def fallback_stream(request: FallbackExecutionRequest) -> StreamingRespons
     tags=["routing"],
     dependencies=[Depends(internal_auth)],
 )
-def decide(request: RoutingRequest) -> RoutingDecision:
+async def decide(request: RoutingRequest) -> RoutingDecision:
     """Pure deterministic selection over main-app registry/health snapshots; no provider call."""
     try:
+        request.provider_health = [
+            ProviderHealthSnapshot.model_validate(item.model_dump(by_alias=True, exclude_none=True))
+            for item in await providers.health()
+        ]
         return router.route(request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

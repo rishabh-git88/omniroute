@@ -54,8 +54,13 @@ metadata uses `openai`, `anthropic`, and `gemini`; legacy `google` is reconciled
 transactionally with reference preservation. No real models/prices are supplied
 by default. Optional snapshots require explicit decimal prices and provenance,
 remain disabled, and cannot overwrite an existing registry version. The local
-seed does not connect the router to database-backed registry consumption or
-enable execution. See [[Database-Verification]] for its format and limits, and
+seed does not enable execution. Phase 6 consumes these database entries for
+connected routing after strict runtime validation. Real routing additionally
+requires `taskScores.general`, `qualityScore` (0–100), and `typicalLatencyMs`
+(1–300000) within capabilities; optional task scores override general. Production
+requires GENERAL rollout. Only effective, enabled, unretired, region-compatible
+entries pass, with the latest eligible version selected per model. See
+[[ADR-014-Multi-Provider-Routing]] for the exact algorithm and health policy. See [[Database-Verification]] for its format and limits, and
 [[ADR-011-Isolated-Database-Verification]] for the decision.
 
 [[AI-Router]] · [[Provider-Layer]] · [[Frontend]] · [[Observability]]

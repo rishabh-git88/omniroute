@@ -1,3 +1,4 @@
+import { RoutedConversationService } from './routed-conversation.service.js';
 import { AiRouterClient } from '../providers/ai-router.client.js';
 import { ExecutionGateway } from '../providers/execution-gateway.js';
 import { Module } from '@nestjs/common';
@@ -18,6 +19,7 @@ import { StreamEventHub } from './stream-event-hub.js';
   imports: [ContextModule, PersistenceModule, UsageModule],
   controllers: [ConversationController, ConversationStreamController],
   providers: [
+    RoutedConversationService,
     ConversationExecutionService,
     ConversationService,
     MockProvider,

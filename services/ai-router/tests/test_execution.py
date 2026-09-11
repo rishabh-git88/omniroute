@@ -124,7 +124,7 @@ def test_authenticated_http_stream_preserves_contract_and_caps(
     [
         ([], "STREAM_TRUNCATED"),
         ([{"type": "response.completed", "response": {}}], "USAGE_MISSING"),
-        ([{"type": "error", "message": "SECRET"}], "OPENAI_ERROR"),
+        ([{"type": "error", "message": "SECRET"}], "PROVIDER_ERROR"),
         ([{"type": "response.output_text.delta", "delta": "a" * 11}], "OUTPUT_LIMIT_EXCEEDED"),
     ],
 )
@@ -242,7 +242,7 @@ def test_generate_endpoint_does_not_return_success_on_provider_failure(
                 headers={"authorization": f"Bearer {TOKEN}"},
             )
             assert response.status_code == 502
-            assert response.json() == {"detail": "OPENAI_ERROR"}
+            assert response.json() == {"detail": "PROVIDER_ERROR"}
 
     asyncio.run(run())
 

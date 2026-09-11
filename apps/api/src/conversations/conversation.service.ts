@@ -1,4 +1,10 @@
-import { executionProvider } from '../providers/execution-gateway.js';
+import { RoutedConversationService } from './routed-conversation.service.js';
+import { AiRouterClient } from '../providers/ai-router.client.js';
+import { routingRegistry } from '../providers/routing-registry.js';
+import {
+  executionProvider,
+  executionEnabled,
+} from '../providers/execution-gateway.js';
 import { providerIdSchema } from '@omniroute/provider-contracts';
 import { enforceBudget, modelBudget } from '../context/context-budget.js';
 import {
@@ -39,6 +45,8 @@ export class ConversationService {
     private readonly repository: PrismaConversationRepository,
     private readonly feedback: FeedbackRepository,
     private readonly metrics: MetricsService,
+    private readonly routed: RoutedConversationService,
+    private readonly router: AiRouterClient,
   ) {}
 
   public async createConversation(
@@ -148,12 +156,19 @@ export class ConversationService {
             ),
             reason: turn.requestGroup.routingDecision.reason,
             strategy: turn.requestGroup.routingDecision.strategy,
+            mode:
+              (
+                turn.requestGroup.routingDecision.inputSnapshot as {
+                  mode?: string;
+                } | null
+              )?.mode ?? null,
           },
           runs: turn.requestGroup.modelRuns.map((run) => ({
             id: run.id,
             model: run.model,
             provider: run.provider,
             status: run.status,
+            executionResult: run.executionResult,
           })),
           status: turn.requestGroup.status,
         },
@@ -203,6 +218,15 @@ export class ConversationService {
     parentResponseId?: string | null,
   ) {
     const content = this.content(command.content);
+    await this.ensureConversation(workspaceId, conversationId);
+    if (executionProvider() !== 'fake')
+      return this.routed.submit(
+        userId,
+        workspaceId,
+        conversationId,
+        { ...command, content },
+        parentResponseId,
+      );
     const model = await this.resolveModel(command.modelKey);
     const conversation = await this.ensureConversation(
       workspaceId,
@@ -524,16 +548,27 @@ export class ConversationService {
   }
 
   public async models() {
-    const models = await this.registry.findEnabled();
-    return models
-      .filter((entry) => entry.provider.key === executionProvider())
-      .map((entry) => ({
-        capabilities: entry.capabilities,
-        displayName: entry.model.displayName,
-        modelKey: entry.model.modelKey,
-        provider: entry.provider,
-        registryVersion: entry.registryVersion,
-      }));
+    const entries = await this.registry.findEnabled();
+    const models =
+      executionProvider() === 'fake'
+        ? entries.filter((e) => executionEnabled(e.provider.key))
+        : routingRegistry(entries);
+    const health =
+      executionProvider() === 'fake'
+        ? []
+        : await this.router.health().catch(() => []);
+    return models.map((entry) => ({
+      capabilities: entry.capabilities,
+      displayName: entry.model.displayName,
+      modelKey: entry.model.modelKey,
+      provider: entry.provider,
+      registryVersion: entry.registryVersion,
+      health:
+        entry.provider.key === 'fake'
+          ? 'ready'
+          : (health.find((h) => h.provider === entry.provider.key)?.status ??
+            'unavailable'),
+    }));
   }
 
   public async recordRoutingDecision(

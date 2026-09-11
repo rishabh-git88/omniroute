@@ -9,6 +9,33 @@ Read alongside [RELEASE-SCOPE](RELEASE-SCOPE.md),
 [RELEASE-BLOCKERS](RELEASE-BLOCKERS.md), and
 [NEXT-MILESTONE](NEXT-MILESTONE.md).
 
+## Release Milestone 2 implementation update
+
+Database Alignment and CI Repair is implemented with local database evidence;
+the broader milestone remains **PARTIAL** until artifact/startup and remote CI
+gates pass. See [[MILESTONE-2-VERIFICATION]] for commands, results, file groups,
+and remaining failures, and [[ADR-011-Isolated-Database-Verification]] for the
+database safety/seed decision.
+
+Both unchanged migrations passed fresh installation and a retained-data upgrade
+rehearsal on separate marked integration databases. All 20 database integration
+tests passed. Tests fail before writes for development/production/unknown URLs,
+unsafe inherited configuration, or an unrecognized server identity. The local
+development database was backed up and aligned; Prisma reports no drift. The
+legacy provider key is now `gemini`, preserving IDs and enablement. Fingerprints
+verify unchanged content in all 29 other domain tables.
+
+Real model seed configuration requires explicit reviewed prices/capabilities and
+immutable versions; defaults create no real models or invented prices. The seed
+does not enable providers or connect the router to registry-backed execution.
+CI now builds dependencies before tests and supplies a synthetic HTTPS web
+origin. A fresh-source frontend/API test run passed without cached build tasks.
+The current unit suites contain 132 TS/JS tests and 22 Python tests.
+
+No AWS or live-provider work, real environment edit, migration rewrite, or commit
+was performed. The following Milestone 1 and audit records are historical;
+Milestone 2 supersedes their local database and CI-source observations only.
+
 ## Release Milestone 1 implementation update
 
 The 2026-09-10 Frontend/API/Auth Foundation task implements the browser boundary
@@ -222,18 +249,18 @@ dependency-ordered backlog item that owns completion.
 | --- | --- | --- | --- |
 | Next.js frontend overall | PARTIAL | Landing, login, shell, composer, sidebar, settings, and credits presentation exist; release interaction and environment defects remain. | R02, R09, R10, R12 |
 | Production browser API configuration | COMPLETE | Direct Next.js environment access and validated production origins; real-browser smoke observed only the configured API origin. No silent production fallback. | R02 |
-| Web build/runtime API-origin behavior | COMPLETE | Configured production build and login rendering pass; runtime changes cannot override the compiled public origin. Missing/invalid production configuration fails closed. CI still needs explicit build configuration under R01. | R01, R02 |
+| Web build/runtime API-origin behavior | COMPLETE | Configured production build and login rendering pass; runtime changes cannot override the compiled public origin. Missing/invalid production configuration fails closed. CI now supplies a synthetic build origin. | R01, R02 |
 | NestJS API overall | PARTIAL | Bootstrap, validation, CORS, identity, repositories, health, logging, and shutdown hooks exist; orchestration, limits, execution recovery, and browser flows remain incomplete. | R02–R09 |
 | FastAPI AI Router overall | PARTIAL | Analyzer, registry/scoring, adapters and fallback exist; service auth, actual health, production event handling, and integration are incomplete. | R07, R08 |
-| Prisma/PostgreSQL domain model | PARTIAL | 30 domain models and SQL constraints cover identity, branches, runs, usage, credits, files, memory, feedback, and future entitlements. Integration evidence remains missing. | R03, R04 |
-| Audited development schema alignment | BROKEN | Core migration was applied; workspace-memory migration was pending and `memories.source_hash` absent. This is the last observed DB state, not a fresh check. | R03 |
-| Safe database integration verification | BLOCKED | Existing suites truncate data; the available test database contained a user. A disposable database is required. Prior CI failed importing packages before integration tests executed. | R01, R03 |
+| Prisma/PostgreSQL domain model | PARTIAL | 30 domain models and SQL constraints cover identity, branches, runs, usage, credits, files, memory, feedback, and future entitlements. Milestone 2 integration tests pass; full product/concurrency/failure invariants remain under R04. | R04 |
+| Audited development schema alignment | COMPLETE | Milestone 2 backed up and applied the pending memory migration; zero Prisma drift, unchanged non-provider content, and canonical Gemini identity verified. | R03 |
+| Safe database integration verification | COMPLETE | Separate marked/restricted tmpfs databases passed fresh and retained-data upgrade checks and 20 integration tests; unsafe targeting fails closed. | R03 |
 | Local PostgreSQL/pgvector service | COMPLETE | Audit verified connection, PostgreSQL 18.6, pgvector 0.8.6, and applied core migration checksum. No RDS claim. | R03 for remaining database work |
 | Local Redis container health | COMPLETE | Existing local container was healthy at audit time. No application integration claim. | R13 for consuming functionality |
 | Application Redis/Valkey functionality | NOT STARTED | No runtime cache, rate-limit, distributed stream, health, or locking client was found; current event storage is process-local. | R13 |
 | S3 file storage | NOT STARTED | No S3-backed upload/object access/lifecycle implementation was found. | R11, R14 |
-| CI release gate | BROKEN | Last inspected GitHub run failed frontend, backend, and integration jobs on missing built workspace exports; build job was skipped. | R01 |
-| Docker image verification | BLOCKED | Build checks were stopped at the user's request; existing image presence does not verify the current three Dockerfiles. | R01 |
+| CI release gate | PARTIAL | Source ordering/configuration repaired; fresh-source frontend/API tests pass. No GitHub-hosted run exists for these uncommitted changes. | R01 |
+| Docker image verification | BLOCKED | Milestone 2 attempted actual builds; storage exhaustion interrupted verification. See MILESTONE-2-VERIFICATION for the final per-image results. | R01 |
 | Observability | PARTIAL | Structured logging, request IDs, optional Node OpenTelemetry and metrics foundations exist. Normal API request logs now omit OAuth queries and credential headers; CloudWatch, ingress log policy, alerts, and cross-service correlation remain. | R15 |
 | Vercel deployment readiness | PARTIAL | A historical successful deployment status exists, but its inspected URL redirected to Vercel SSO; public runtime behavior and current release revision were not verified. | R02, R14, R16 |
 | Production browser acceptance | BLOCKED | An accessible representative deployment and completed environment/auth integration are required. | R14, R16 |

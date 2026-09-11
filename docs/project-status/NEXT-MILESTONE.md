@@ -2,6 +2,14 @@
 
 Planning reset: 2026-09-10.
 
+Milestone 2 update, 2026-09-10: database alignment, isolated migration/integration
+verification, reviewed registry seeding, and CI source repair are implemented.
+R03's local acceptance is COMPLETE. R01 remains PARTIAL until image/startup
+verification and the GitHub-hosted run pass. See [[MILESTONE-2-VERIFICATION]] for
+results and remaining failures; [[Database-Verification]] contains the runbook.
+AWS and provider execution were not started. Finish the remaining baseline gates
+before moving to the existing R04/R05 dependency sequence below.
+
 Implementation update, 2026-09-10: the user's subsequent **Frontend/API/Auth
 Foundation** task authorized the thirteen browser-boundary fixes within R02.
 Those fixes, their regression tests, and a configured production/browser smoke
@@ -13,9 +21,9 @@ open gates. No provider integration was performed.
 
 **Milestone: establish a reproducible, authenticated browser-to-database baseline.**
 
-Current status: **PARTIAL**. Existing foundations reduce the work, but broken CI,
-browser/API configuration and transport, incomplete authentication evidence, and
-unsafe integration-test targeting prevent a trustworthy execution baseline.
+Current status: **PARTIAL**. Browser/API and local database repairs now have
+verification evidence. Image/startup gates, a green GitHub run for the repaired
+revision, and live authentication on the configured domains remain open.
 
 This milestone is a bounded plan for the next implementation task. Creating this
 document does not start implementation, apply migrations, provision cloud
@@ -58,7 +66,7 @@ or reset a local database to make the check pass.
 Keep each item unchecked until evidence exists for the implementation revision.
 Historical audit results are a baseline, not a substitute for regression checks.
 
-- [ ] Clean-checkout frozen JS/Python dependency installation succeeds.
+- [x] Fresh-source frozen JS installation and frozen Python synchronization succeed.
 - [x] Lint, formatting, TypeScript/Python type checks, and existing unit/contract
       tests pass through the root dependency graph. Repairing isolated CI job
       dependency ordering remains under the separate CI checkbox below.
@@ -74,9 +82,9 @@ Historical audit results are a baseline, not a substitute for regression checks.
       rejection pass using representative frontend/API domains.
 - [x] Redirect escape fixtures are rejected and synthetic OAuth code/state
       markers do not appear in request logs.
-- [ ] A documented disposable database is used; fresh and upgrade migration
+- [x] A documented disposable database is used; fresh and upgrade migration
       paths pass with pgvector and expected schema fields.
-- [ ] Database/auth/conversation integration suites actually execute and pass;
+- [x] Database/auth/conversation integration suites actually execute and pass;
       no existing populated database is truncated or reset.
 - [ ] All three Dockerfiles build and configured startup/health checks pass.
 - [ ] The CI run for the reviewed revision passes every mandatory gate, including
@@ -143,6 +151,6 @@ milestone as a production release.
 
 The domain-cookie arrangement is resolved: configured app/API sibling hosts and
 shared session cookies, with API-host-only OAuth cookies. Immediate inputs are
-the actual owned domain, a safe Google test configuration, and a disposable
-database environment. Later policy
+the actual owned domain and a safe Google test configuration. The disposable
+database environment is now implemented and verified. Later policy
 decisions remain in [RELEASE-SCOPE — Open Questions](RELEASE-SCOPE.md#open-questions).

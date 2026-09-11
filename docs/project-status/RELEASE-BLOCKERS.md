@@ -34,9 +34,9 @@ overlap after its prerequisites pass; order does not imply a calendar estimate.
 | ID | Priority | Current status | Work item | Depends on |
 | --- | --- | --- | --- | --- |
 | R00 | P0 | PARTIAL | Reconcile architecture records and remaining release policies | None |
-| R01 | P0 | BROKEN | Restore reproducible clean-checkout CI and artifact validation | R00 |
+| R01 | P0 | PARTIAL | Restore reproducible clean-checkout CI and artifact validation | R00 |
 | R02 | P0 | PARTIAL | Repair production web/API configuration, CORS, and authentication | R01 |
-| R03 | P0 | BLOCKED | Establish disposable database verification and migration alignment | R01 |
+| R03 | P0 | COMPLETE | Establish disposable database verification and local migration alignment | R01 |
 | R04 | P0 | PARTIAL | Prove conversation, run, tenant, and ledger persistence invariants | R02, R03 |
 | R05 | P0 | BROKEN | Correct canonical context and persist frozen execution snapshots | R04 |
 | R06 | P0 | PARTIAL | Complete reservation, settlement, failure, and recovery accounting | R04, R05 |
@@ -78,9 +78,13 @@ Affected notes: `docs/product/MVP-Scope.md`, `docs/architecture/Context-Memory.m
 
 ## R01 — CI and reproducible artifacts
 
-The inspected GitHub test jobs did not build exported workspace dependencies
-before importing them. The root build also lacks its required public API URL.
-Dockerfiles exist, but current image builds were not verified.
+Milestone 2 repairs workspace build ordering, adds synthetic web configuration,
+and wires migration, integration, and image-startup gates. A fresh temporary
+source copy passed frontend/API tests with no cached build tasks. A GitHub-hosted
+run for these uncommitted changes remains open. Docker verification encountered
+host storage exhaustion; see the current evidence in [[MILESTONE-2-VERIFICATION]].
+The earlier missing-export failures describe the audit baseline, not the repaired
+local test graph.
 
 Acceptance:
 
@@ -141,17 +145,23 @@ Files: `apps/web/app/api-url.ts`, `apps/web/app/auth-provider.tsx`,
 
 ## R03 — Safe database and migration verification
 
-The last observed development database lacked the workspace-memory migration.
-The existing integration suites truncate rows, so they were not run against the
-populated local test database. This is a verification prerequisite, not permission
-to reset that database.
+Milestone 2 completed the local scope of R03. A separate, marked tmpfs database
+passed fresh migration and retained-data upgrade verification; all 20 database
+integration tests executed and passed. Guards refuse development, production,
+and unrecognized targets before writes. The explicitly authorized development
+repair backed up the recognized database, applied the missing memory migration,
+verified zero Prisma drift, and reconciled `google` to `gemini` without changing
+provider IDs, enabled flags, or data in 29 other domain tables. Neither migration
+was rewritten and the old populated test database was not used.
 
 Acceptance: create a clearly disposable test target; apply both migrations from
 empty state; verify migration status and pgvector; run the actual integration
 suite. Rehearse upgrade from the core schema with synthetic retained records and
-document any seed/registry naming drift. Validate the eventual RDS-supported
-PostgreSQL/pgvector combination rather than assuming local versions are available
-on RDS. Treat changes to any existing database as a separate controlled action.
+document any seed/registry naming drift. These local criteria now pass; see
+[[Database-Verification]] and [[MILESTONE-2-VERIFICATION]]. Validation of the
+eventual RDS-supported PostgreSQL/pgvector combination belongs to R14's AWS
+acceptance; local results do not establish RDS compatibility. Future changes to
+existing databases still require a controlled procedure.
 
 Files: `apps/api/prisma/`, Prisma config files, database integration tests,
 `infrastructure/postgres/init/`, and `.github/workflows/ci.yml`.

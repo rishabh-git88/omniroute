@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 export interface ConversationStreamEvent {
   data: Record<string, unknown>;
   id: number;
-  type: 'content.delta' | 'run.status' | 'run.error';
+  type: 'content.delta' | 'run.status' | 'run.error' | 'fallback.started';
 }
 
 type Subscriber = (event: ConversationStreamEvent) => void;

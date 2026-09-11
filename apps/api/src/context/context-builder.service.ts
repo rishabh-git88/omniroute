@@ -8,7 +8,7 @@ import type {
   CanonicalMessage,
   ContextBundle,
 } from '@omniroute/provider-contracts';
-import { MemoryKind } from '../generated/prisma/client.js';
+import { MemoryKind, type Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { MemoryRepository } from './memory.repository.js';
 import { SemanticRetrievalService } from './semantic-retrieval.service.js';
@@ -35,8 +35,11 @@ export class ContextBuilderService {
     private readonly retrieval: SemanticRetrievalService,
   ) {}
 
-  public async build(input: ContextBuildInput): Promise<ContextBundle> {
-    const current = await this.database.client.turn.findFirst({
+  public async build(
+    input: ContextBuildInput,
+    database: Prisma.TransactionClient = this.database.client,
+  ): Promise<ContextBundle> {
+    const current = await database.turn.findFirst({
       where: {
         id: input.turnId,
         conversationId: input.conversationId,
@@ -64,7 +67,7 @@ export class ContextBuilderService {
           'Conversation branch is cyclic or too deep',
         );
       visited.add(parentId);
-      const parent = await this.database.client.modelResponse.findFirst({
+      const parent = await database.modelResponse.findFirst({
         where: { id: parentId, turn: { conversationId: input.conversationId } },
         include: { turn: true },
       });

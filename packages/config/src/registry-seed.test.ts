@@ -55,3 +55,42 @@ describe('reviewed registry seed configuration', () => {
     expect(() => parseRegistrySeed({ models: [fixture, fixture] })).toThrow();
   });
 });
+
+import { validateRoutingRegistry } from './registry-seed.js';
+const routingFixture = {
+  ...fixture,
+  capabilities: {
+    ...fixture.capabilities,
+    taskScores: { general: 70, coding: 90 },
+    qualityScore: 85,
+    typicalLatencyMs: 900,
+  },
+};
+it('requires reviewed routing metadata and retains zero price', () => {
+  expect(() => validateRoutingRegistry(fixture)).toThrow();
+  expect(
+    validateRoutingRegistry({
+      ...routingFixture,
+      pricing: {
+        ...fixture.pricing,
+        inputPerMillionTokens: '0',
+        outputPerMillionTokens: '0',
+      },
+    }).pricing.inputPerMillionTokens,
+  ).toBe('0');
+});
+it.each([
+  { qualityScore: 101 },
+  { typicalLatencyMs: -1 },
+  { taskScores: { coding: 90 } },
+  { taskScores: { general: -1 } },
+  { taskScores: { general: 80, invented: 90 } },
+  { modalities: { input: ['image'], output: ['text'] } },
+])('rejects unsafe routing metadata %j', (capabilities) => {
+  expect(() =>
+    validateRoutingRegistry({
+      ...routingFixture,
+      capabilities: { ...routingFixture.capabilities, ...capabilities },
+    }),
+  ).toThrow();
+});

@@ -1,6 +1,7 @@
-"""One bounded OpenAI attempt. Disconnect cancellation closes the upstream socket."""
+"""One bounded provider-neutral attempt. Disconnect cancellation closes the upstream socket."""
 
 import asyncio
+import time
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 
@@ -19,18 +20,26 @@ def failure(plan: ProviderExecutionPlan, code: str, retryable: bool = False) -> 
     )
 
 
-async def execute(
+async def _execute(
     plan: ProviderExecutionPlan, providers: ProviderRegistry, settings: Settings
 ) -> AsyncGenerator[ProviderEvent, None]:
+    started = time.monotonic()
     output_bytes = 0
     input_tokens = output_tokens = None
     try:
-        if plan.model.provider != "openai" or plan.request.provider != "openai":
-            yield failure(plan, "PROVIDER_DISABLED")
+        if plan.model.provider != plan.request.provider:
+            yield failure(plan, "REGISTRY_MISMATCH")
             return
         adapter = providers.for_plan(plan)
-        if (await adapter.health()).status != "ready":
-            yield failure(plan, "PROVIDER_DISABLED")
+        state = (await adapter.health()).status
+        if state not in {"available", "enabled", "ready"}:
+            codes = {
+                "disabled": "PROVIDER_DISABLED",
+                "missing_credentials": "PROVIDER_MISSING_CREDENTIALS",
+                "rate_limited": "RATE_LIMITED",
+                "timed_out": "PROVIDER_TIMEOUT",
+            }
+            yield failure(plan, codes.get(state, "PROVIDER_UNAVAILABLE"), True)
             return
         capabilities = plan.model.capabilities
         window = capabilities.get("contextWindow")
@@ -77,11 +86,37 @@ async def execute(
                     ):
                         yield failure(plan, "USAGE_MISSING")
                         return
+                    if event.type in {"run.completed", "run.failed"}:
+                        providers.observe(
+                            plan,
+                            event.code if event.type == "run.failed" else None,
+                            round((time.monotonic() - started) * 1000),
+                        )
                     yield event
                     if event.type in {"run.completed", "run.failed"}:
                         return
+        providers.observe(plan, "STREAM_TRUNCATED", round((time.monotonic() - started) * 1000))
         yield failure(plan, "STREAM_TRUNCATED", True)
     except TimeoutError:
+        providers.observe(plan, "PROVIDER_TIMEOUT", round((time.monotonic() - started) * 1000))
         yield failure(plan, "PROVIDER_TIMEOUT", True)
     except (RuntimeError, ValueError, TypeError, KeyError):
-        yield failure(plan, "PROVIDER_PROTOCOL_ERROR")
+        providers.observe(
+            plan, "PROVIDER_PROTOCOL_ERROR", round((time.monotonic() - started) * 1000)
+        )
+        yield failure(plan, "PROVIDER_PROTOCOL_ERROR", True)
+
+
+async def execute(
+    plan: ProviderExecutionPlan, providers: ProviderRegistry, settings: Settings
+) -> AsyncGenerator[ProviderEvent, None]:
+    if providers.active_requests >= settings.max_concurrent_requests:
+        yield failure(plan, "REQUEST_LIMIT_EXCEEDED")
+        return
+    providers.active_requests += 1
+    try:
+        async with aclosing(_execute(plan, providers, settings)) as stream:
+            async for event in stream:
+                yield event
+    finally:
+        providers.active_requests -= 1

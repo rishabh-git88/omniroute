@@ -59,6 +59,8 @@ export const providerEventSchema = z.discriminatedUnion('type', [
     type: z.literal('content.delta'),
   }),
   z.object({
+    usageFinal: z.boolean().optional(),
+    totalTokens: z.number().int().nonnegative().optional(),
     inputTokens: z.number().int().nonnegative().optional(),
     outputTokens: z.number().int().nonnegative().optional(),
     runId: z.uuid(),
@@ -91,13 +93,14 @@ export interface ProviderCapabilities {
 }
 
 export interface NormalizedUsage {
+  totalTokens?: number;
   inputTokens?: number;
   outputTokens?: number;
 }
 
 export interface ProviderHealth {
   provider: ProviderId;
-  status: 'disabled' | 'ready' | 'unavailable';
+  status: z.infer<typeof providerHealthStatusSchema>;
 }
 
 export interface ProviderGeneration {
@@ -128,3 +131,89 @@ export const providerExecutionPlanSchema = z.strictObject({
   }),
 });
 export type ProviderExecutionPlan = z.infer<typeof providerExecutionPlanSchema>;
+
+export const routingModeSchema = z.enum(['economy', 'smart', 'max']);
+export type RoutingMode = z.infer<typeof routingModeSchema>;
+export const providerHealthStatusSchema = z.enum([
+  'disabled',
+  'enabled',
+  'missing_credentials',
+  'temporarily_unhealthy',
+  'rate_limited',
+  'timed_out',
+  'available',
+  'ready',
+  'degraded',
+  'unavailable',
+]);
+export const providerHealthSchema = z.object({
+  provider: providerIdSchema,
+  status: providerHealthStatusSchema,
+  latencyMs: z.number().int().nonnegative().optional(),
+});
+export const routingCandidateSchema = z.object({
+  provider: providerIdSchema,
+  modelKey: z.string().min(1),
+  registryEntryId: z.uuid(),
+  score: z.number(),
+  reason: z.string(),
+  estimatedCost: z.string().nullable().optional(),
+  pricingVersion: z.string().nullable().optional(),
+});
+export const routingDecisionSchema = z.object({
+  requestGroupId: z.uuid(),
+  taskCategory: z.enum([
+    'general',
+    'coding',
+    'debugging',
+    'architecture',
+    'reasoning',
+    'writing',
+    'summarization',
+    'research',
+    'long-context',
+    'structured-data',
+    'multimodal',
+  ]),
+  selectedProvider: providerIdSchema,
+  selectedModel: z.string().min(1),
+  selectedRegistryEntryId: z.uuid(),
+  routingScore: z.number(),
+  reason: z.string(),
+  fallbackCandidates: z.array(routingCandidateSchema),
+  estimatedCost: z.string().nullable().optional(),
+  pricingVersion: z.string().nullable().optional(),
+});
+export type RoutingDecision = z.infer<typeof routingDecisionSchema>;
+
+export const routingRequestSchema = z.strictObject({
+  requestGroupId: z.uuid(),
+  prompt: z.string().min(1).max(20000),
+  mode: routingModeSchema.default('smart'),
+  requestedMode: z.enum(['single', 'compare']).default('single'),
+  models: z
+    .array(
+      z.strictObject({
+        registryEntryId: z.uuid(),
+        provider: providerIdSchema,
+        modelKey: z.string().min(1),
+        providerModelId: z.string().min(1),
+        registryVersion: z.number().int().positive(),
+        enabled: z.boolean(),
+        capabilities: z.record(z.string(), z.unknown()),
+        pricing: z.record(z.string(), z.unknown()).nullable().optional(),
+        pricingVersion: z.string().nullable().optional(),
+        latency: z.record(z.string(), z.unknown()).nullable().optional(),
+        regionConstraints: z.array(z.string()).default([]),
+      }),
+    )
+    .min(1),
+  providerHealth: z.array(providerHealthSchema).default([]),
+  contextTokens: z.number().int().nonnegative().default(0),
+  maxOutputTokens: z.number().int().positive().default(512),
+  requiresTools: z.boolean().default(false),
+  requiresMultimodal: z.boolean().default(false),
+  region: z.string().nullable().optional(),
+  userPreferredModel: z.string().nullable().optional(),
+  userPreferredProvider: z.string().nullable().optional(),
+});

@@ -87,3 +87,57 @@ def test_execution_envelope_shared_fixtures() -> None:
         else:
             assert case["valid"], case["name"]
             assert plan.model_dump(mode="json", by_alias=True, exclude_none=True) == case["plan"]
+
+
+def test_routing_wire_fixtures_match_json_schema_and_python() -> None:
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator, FormatChecker
+
+    from app.contracts import RoutingRequest
+
+    root = Path(__file__).resolve().parents[3] / "packages/provider-contracts"
+    validator = Draft202012Validator(
+        json.loads((root / "schemas/routing-request.schema.json").read_text()),
+        format_checker=FormatChecker(),
+    )
+    for case in json.loads((root / "fixtures/routing-requests.json").read_text()):
+        assert validator.is_valid(case["request"]) == case["valid"]
+        try:
+            RoutingRequest.model_validate(case["request"])
+        except ValidationError:
+            assert not case["valid"]
+        else:
+            assert case["valid"]
+
+
+def test_all_provider_events_match_published_event_contract() -> None:
+    import asyncio
+    import json
+    from pathlib import Path
+
+    from jsonschema import Draft202012Validator, FormatChecker
+    from test_multi_provider import execution_plan, settings, wire
+    from test_provider_contracts import MockTransport
+
+    from app.execution import execute
+    from app.providers.registry import ProviderRegistry
+
+    root = Path(__file__).resolve().parents[3] / "packages/provider-contracts"
+    validator = Draft202012Validator(
+        json.loads((root / "schemas/provider-event.schema.json").read_text()),
+        format_checker=FormatChecker(),
+    )
+
+    async def run() -> None:
+        for provider in ["openai", "anthropic", "gemini"]:
+            config = settings()
+            async for event in execute(
+                execution_plan(provider),
+                ProviderRegistry(config, MockTransport(wire(provider))),
+                config,
+            ):
+                validator.validate(event.model_dump(by_alias=True, mode="json", exclude_none=True))
+
+    asyncio.run(run())

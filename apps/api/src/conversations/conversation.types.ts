@@ -9,4 +9,5 @@ export interface CreateMessageCommand {
   content: string;
   idempotencyKey: string;
   modelKey?: string;
+  routingMode?: 'economy' | 'smart' | 'max';
 }

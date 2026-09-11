@@ -1,0 +1,298 @@
+[
+  {
+    "name": "economy",
+    "valid": true,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "economy",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": 100,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "smart",
+    "valid": true,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "smart",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": 100,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "max",
+    "valid": true,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "max",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": 100,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "invalid",
+    "valid": false,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "invalid",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": 100,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "maxOutputTokens",
+    "valid": false,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "economy",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": 100,
+      "maxOutputTokens": 0,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "contextTokens",
+    "valid": false,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "economy",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": -1,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "models",
+    "valid": false,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "Hello",
+      "mode": "economy",
+      "models": [],
+      "contextTokens": 100,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  },
+  {
+    "name": "prompt",
+    "valid": false,
+    "request": {
+      "requestGroupId": "019cd3a5-8d1d-7000-8000-000000000002",
+      "prompt": "",
+      "mode": "economy",
+      "models": [
+        {
+          "registryEntryId": "019cd3a5-8d1d-7000-8000-000000000001",
+          "provider": "openai",
+          "modelKey": "openai:fixture",
+          "providerModelId": "fixture",
+          "registryVersion": 1,
+          "enabled": true,
+          "capabilities": {
+            "contextWindow": 4096,
+            "maxOutputTokens": 512,
+            "qualityScore": 80,
+            "taskScores": {
+              "general": 80
+            },
+            "typicalLatencyMs": 500
+          },
+          "pricing": {
+            "inputPerMillionTokens": "0",
+            "outputPerMillionTokens": "0"
+          },
+          "pricingVersion": "fixture-v1",
+          "regionConstraints": []
+        }
+      ],
+      "contextTokens": 100,
+      "maxOutputTokens": 512,
+      "requestedMode": "single",
+      "providerHealth": [],
+      "requiresTools": false,
+      "requiresMultimodal": false
+    }
+  }
+]
