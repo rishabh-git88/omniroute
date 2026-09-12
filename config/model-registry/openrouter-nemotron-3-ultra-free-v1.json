@@ -1,0 +1,30 @@
+{
+  "models": [
+    {
+      "provider": "openrouter",
+      "modelKey": "openrouter:nvidia-nemotron-3-ultra-550b-a55b:free",
+      "providerModelId": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "displayName": "NVIDIA Nemotron 3 Ultra (free) via OpenRouter",
+      "registryVersion": 1,
+      "capabilities": {
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "files": false,
+        "images": false,
+        "search": false,
+        "tools": false,
+        "contextWindow": 1000000,
+        "maxOutputTokens": 65536
+      },
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": "0",
+        "outputPerMillionTokens": "0",
+        "sourceUrl": "https://openrouter.ai/nvidia/nemotron-3-ultra-550b-a55b-20260604:free/api",
+        "reviewedAt": "2026-09-12T00:00:00Z"
+      },
+      "pricingVersion": "openrouter-nemotron-3-ultra-free-2026-09-12",
+      "effectiveAt": "2026-09-12T00:00:00Z",
+      "regionConstraints": []
+    }
+  ]
+}

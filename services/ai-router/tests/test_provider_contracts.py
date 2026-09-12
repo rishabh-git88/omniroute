@@ -7,7 +7,13 @@ import pytest
 
 from app.config import Settings
 from app.contracts import ProviderExecutionPlan
-from app.providers.adapters import AnthropicAdapter, GeminiAdapter, OpenAIAdapter
+from app.providers.adapters import (
+    AnthropicAdapter,
+    GeminiAdapter,
+    GroqAdapter,
+    OpenAIAdapter,
+    OpenRouterAdapter,
+)
 from app.providers.registry import ProviderRegistry
 
 
@@ -94,10 +100,36 @@ def plan(provider: str) -> ProviderExecutionPlan:
                 },
             ],
         ),
+        (
+            GroqAdapter,
+            "groq",
+            [
+                {"id": "groq-request", "choices": [{"delta": {"content": "hi"}}]},
+                {
+                    "id": "groq-request",
+                    "choices": [{"delta": {}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+                },
+            ],
+        ),
+        (
+            OpenRouterAdapter,
+            "openrouter",
+            [
+                {"id": "openrouter-request", "choices": [{"delta": {"content": "hi"}}]},
+                {
+                    "id": "openrouter-request",
+                    "choices": [{"delta": {}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+                },
+            ],
+        ),
     ],
 )
 def test_adapters_hide_wire_formats_behind_normalized_events(
-    adapter_class: type[OpenAIAdapter | AnthropicAdapter | GeminiAdapter],
+    adapter_class: type[
+        OpenAIAdapter | AnthropicAdapter | GeminiAdapter | GroqAdapter | OpenRouterAdapter
+    ],
     provider: str,
     events: list[dict[str, Any]],
 ) -> None:
@@ -112,18 +144,21 @@ def test_adapters_hide_wire_formats_behind_normalized_events(
 
     result = asyncio.run(collect())
 
-    assert [event.type for event in result] == [
-        "run.started",
+    assert result[0].type == "run.started"
+    assert [event.type for event in result[-3:]] == [
         "content.delta",
         "usage.updated",
         "run.completed",
     ]
-    assert result[1].text == "hi"
-    assert result[2].input_tokens == 2
+    assert next(event for event in result if event.type == "content.delta").text == "hi"
+    assert next(event for event in result if event.type == "usage.updated").input_tokens == 2
     if provider == "gemini":
         assert "reviewed-model-id:streamGenerateContent" in transport.requests[0][0]
     else:
         assert transport.requests[0][2]["model"] == "reviewed-model-id"
+    if provider in {"groq", "openrouter"}:
+        assert transport.requests[0][2]["max_tokens"] == 100
+        assert transport.requests[0][2]["stream_options"] == {"include_usage": True}
     assert "test-secret" not in repr(result)
 
 
@@ -135,5 +170,15 @@ def test_registry_requires_explicit_enablement_and_never_exposes_keys() -> None:
         "openai": "enabled",
         "anthropic": "disabled",
         "gemini": "disabled",
+        "groq": "disabled",
+        "openrouter": "disabled",
     }
     assert "not-for-logs" not in repr(states)
+
+
+def test_enabled_adapter_without_a_credential_is_unavailable_without_startup_failure() -> None:
+    registry = ProviderRegistry(Settings(enable_groq=True, enable_openrouter=True))
+    states = {state.provider: state.status for state in asyncio.run(registry.health())}
+
+    assert states["groq"] == "missing_credentials"
+    assert states["openrouter"] == "missing_credentials"

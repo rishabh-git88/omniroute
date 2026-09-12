@@ -62,26 +62,35 @@ The Blueprint sync prompts for these API values:
 | `GOOGLE_CLIENT_ID` | Production Google OAuth web-client ID |
 | `GOOGLE_CLIENT_SECRET` | Matching production Google OAuth client secret |
 | `REDIS_URL` | Private connection string from the existing Render Key Value instance |
-| `OPENAI_API_KEY` | OpenAI project API key, entered only on `omniroute-ai-router` |
+| `GEMINI_API_KEY` | Gemini API key, entered only on `omniroute-ai-router` |
+| `GROQ_API_KEY` | Groq API key, entered only on `omniroute-ai-router` |
+| `OPENROUTER_API_KEY` | OpenRouter API key, entered only on `omniroute-ai-router` |
+| `OPENAI_API_KEY` | Optional future OpenAI project key, entered only on `omniroute-ai-router` |
 
 Do not create a second Free Key Value instance. Copy the existing instance's
 internal/private connection string into `REDIS_URL`; never commit or expose it.
-Do not add `AUTH_COOKIE_DOMAIN`. Keep Anthropic and Gemini keys unset. OpenAI
-activation is described below and remains blocked by the reviewed registry gate.
+Do not add `AUTH_COOKIE_DOMAIN`. OpenAI and Anthropic are disabled in this
+development Blueprint and their absent keys do not block router startup. Gemini,
+Groq, and OpenRouter are enabled only at the adapter layer; a reviewed registry
+entry still controls whether any model can execute.
 
-## OpenAI single-provider activation
+## Development provider activation
 
-The Blueprint configures `AI_EXECUTION_PROVIDER=openai` on the API and
-`AI_ROUTER_ENABLE_OPENAI=true` on the AI Router. Render prompts for
-`OPENAI_API_KEY` only on the AI Router service; enter an OpenAI project key
-there and never add it to Vercel or the API service.
+The Blueprint configures `AI_EXECUTION_PROVIDER=multi` on the API, while the AI
+Router enables Gemini, Groq, and OpenRouter. Enter only their keys on the AI
+Router service; never add a provider key to Vercel or the NestJS API service.
+OpenAI and Anthropic remain first-class source support but are disabled until
+their paid credentials are intentionally supplied.
 
 [`config/model-registry/openai-gpt-5-mini-v1.json`](../../config/model-registry/openai-gpt-5-mini-v1.json)
-records OpenAI's documented `gpt-5-mini` identity, text limits, and standard
-input/output pricing. Its importer creates the entry disabled. Before activation,
-an authorized operator must add internally reviewed `taskScores`, `qualityScore`,
+and the Gemini, Groq, and OpenRouter candidate files record documented model
+identity, text limits, and provider/API pricing. Their importer creates entries
+disabled. Gemini's developer free quota is not represented as an artificial zero
+provider price; the concrete OpenRouter `:free` candidate is zero only because
+OpenRouter documents that endpoint as zero priced. Before activation, an
+authorized operator must add internally reviewed `taskScores`, `qualityScore`,
 and `typicalLatencyMs` to a new immutable registry version. This prevents
-unmeasured routing metadata from enabling paid traffic.
+unmeasured routing metadata from enabling traffic.
 
 From a trusted operator machine with the Supabase production `DATABASE_URL`, run
 the explicit administrative import after reviewing the JSON file. The command
@@ -95,8 +104,8 @@ pnpm --filter @omniroute/api db:manage:registry
 
 After adding approved routing metadata in a new registry version, rerun with
 `MODEL_REGISTRY_ACTIVATE=true` to enable the provider and its `GENERAL` rollout.
-Run the production smoke manually only after Render has the OpenAI key. No live
-provider test runs in CI.
+Run a production smoke manually only after Render has the relevant provider key.
+No live provider test runs in CI.
 
 ## Vercel and Google configuration
 

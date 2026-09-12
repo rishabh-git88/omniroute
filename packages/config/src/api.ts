@@ -6,7 +6,16 @@ const environmentSchema = z.enum(['development', 'test', 'production']);
 const apiEnvironmentSchema = z.object({
   AI_ROUTER_URL: httpOriginSchema.default('http://localhost:8001'),
   AI_EXECUTION_PROVIDER: z
-    .enum(['disabled', 'mock', 'openai', 'anthropic', 'gemini', 'multi'])
+    .enum([
+      'disabled',
+      'mock',
+      'openai',
+      'anthropic',
+      'gemini',
+      'groq',
+      'openrouter',
+      'multi',
+    ])
     .default('disabled'),
   AI_ROUTER_INTERNAL_TOKEN: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -148,7 +157,7 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
   )
     throw new EnvironmentValidationError(['AI_EXECUTION_PROVIDER']);
   if (
-    ['openai', 'anthropic', 'gemini', 'multi'].includes(
+    ['openai', 'anthropic', 'gemini', 'groq', 'openrouter', 'multi'].includes(
       result.data.AI_EXECUTION_PROVIDER,
     ) &&
     (!result.data.AI_ROUTER_INTERNAL_TOKEN || !source.AI_ROUTER_URL)

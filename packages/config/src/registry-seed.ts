@@ -37,9 +37,10 @@ export const registryCapabilitiesSchema = z
   .refine((value) => value.maxOutputTokens <= value.contextWindow);
 const model = z
   .strictObject({
-    provider: z.enum(['openai', 'anthropic', 'gemini']),
+    provider: z.enum(['openai', 'anthropic', 'gemini', 'groq', 'openrouter']),
     modelKey: z.string().regex(/^[a-z0-9][a-z0-9:._-]*$/),
-    providerModelId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/),
+    // Some reviewed upstream IDs are namespaced (for example `openai/gpt-oss-120b`).
+    providerModelId: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/),
     displayName: z.string().trim().min(1),
     registryVersion: z.number().int().positive(),
     capabilities: registryCapabilitiesSchema,

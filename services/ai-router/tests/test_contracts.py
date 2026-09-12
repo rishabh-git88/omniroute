@@ -131,7 +131,7 @@ def test_all_provider_events_match_published_event_contract() -> None:
     )
 
     async def run() -> None:
-        for provider in ["openai", "anthropic", "gemini"]:
+        for provider in ["openai", "anthropic", "gemini", "groq", "openrouter"]:
             config = settings()
             async for event in execute(
                 execution_plan(provider),

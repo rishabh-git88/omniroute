@@ -105,7 +105,14 @@
         },
         "provider": {
           "type": "string",
-          "enum": ["fake", "openai", "anthropic", "gemini"]
+          "enum": [
+            "fake",
+            "openai",
+            "anthropic",
+            "gemini",
+            "groq",
+            "openrouter"
+          ]
         },
         "runId": {
           "type": "string",
@@ -133,7 +140,7 @@
       "properties": {
         "provider": {
           "type": "string",
-          "enum": ["openai", "anthropic", "gemini"]
+          "enum": ["openai", "anthropic", "gemini", "groq", "openrouter"]
         },
         "providerModelId": {
           "type": "string",

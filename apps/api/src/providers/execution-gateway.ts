@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { parseApiEnvironment } from '@omniroute/config/api';
 import {
+  externalProviderIds,
   providerExecutionPlanSchema,
   type CanonicalChatRequest,
   type ProviderEvent,
@@ -10,7 +11,14 @@ import { AiRouterClient, ProviderExecutionError } from './ai-router.client.js';
 import { MockProvider } from './mock.provider.js';
 
 export function executionProvider():
-  'fake' | 'openai' | 'anthropic' | 'gemini' | 'multi' | undefined {
+  | 'fake'
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'groq'
+  | 'openrouter'
+  | 'multi'
+  | undefined {
   const mode = parseApiEnvironment(process.env).AI_EXECUTION_PROVIDER;
   return mode === 'mock' ? 'fake' : mode === 'disabled' ? undefined : mode;
 }
@@ -78,6 +86,8 @@ export class ExecutionGateway {
 export function executionEnabled(provider: string): boolean {
   const mode = executionProvider();
   return mode === 'multi'
-    ? ['openai', 'anthropic', 'gemini'].includes(provider)
+    ? externalProviderIds.includes(
+        provider as (typeof externalProviderIds)[number],
+      )
     : mode === provider;
 }

@@ -22,8 +22,12 @@ until tested with an authorized account.
 
 Planning reset: 2026-09-10. Overall status: **PARTIAL**. OmniRoute has substantial
 foundations and passing local checks, but its required production product is not
-complete. The connected conversation executor still uses a NestJS mock provider;
-the live FastAPI adapters are not connected to that product path.
+complete. Authenticated execution now runs through NestJS, the FastAPI AI Router,
+and provider-neutral adapters. OpenAI and Anthropic remain supported but may be
+disabled. Gemini, Groq, and OpenRouter adapters are available when their router
+flags and server-only credentials are configured. Their reviewed registry
+candidates remain disabled pending internal task/quality/latency evaluation, so
+they are not production routing evidence and Compare 3 is not complete.
 
 Read alongside [RELEASE-SCOPE](RELEASE-SCOPE.md),
 [RELEASE-BLOCKERS](RELEASE-BLOCKERS.md), and

@@ -129,7 +129,7 @@ and updates the browser's cancel target before the replacement starts.
 
 ## Configuration and verification
 
-`AI_EXECUTION_PROVIDER=multi` admits OpenAI, Anthropic, and Gemini; individual
+`AI_EXECUTION_PROVIDER=multi` admits any enabled real-provider adapter; individual
 provider values remain supported. Each FastAPI adapter still requires its own
 enablement flag and server-side key. Production rejects MockProvider. The shared
 internal token is mandatory. Optional `AI_ROUTING_REGION` enforces regional

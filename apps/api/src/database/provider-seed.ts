@@ -43,6 +43,8 @@ export async function seedProviderRegistry(
         { key: 'openai', displayName: 'OpenAI' },
         { key: 'anthropic', displayName: 'Anthropic' },
         { key: 'gemini', displayName: 'Google Gemini' },
+        { key: 'groq', displayName: 'Groq' },
+        { key: 'openrouter', displayName: 'OpenRouter' },
       ]) {
         await transaction.provider.upsert({
           where: { key: provider.key },

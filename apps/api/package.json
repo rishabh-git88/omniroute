@@ -12,6 +12,7 @@
     "db:migrate:status": "prisma migrate status",
     "db:seed": "prisma db seed",
     "db:seed:registry": "tsx scripts/seed-registry.ts",
+    "db:manage:registry": "tsx scripts/manage-registry.ts",
     "dev": "nest start --watch",
     "lint": "eslint src scripts prisma/*.ts prisma*.config.ts vitest*.config.ts --ignore-pattern 'generated/**' --config ../../eslint.config.mjs",
     "start": "node dist/main.js",

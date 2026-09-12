@@ -32,10 +32,8 @@ services:
         value: '24'
       - key: AUTH_SESSION_ROTATION_MINUTES
         value: '15'
-      # The OpenAI adapter is enabled here, but execution still fails closed
-      # until a reviewed General-rollout registry entry is activated.
       - key: AI_EXECUTION_PROVIDER
-        value: openai
+        value: multi
       - key: DATABASE_URL
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -78,13 +76,23 @@ services:
       - key: AI_ROUTER_LOG_LEVEL
         value: info
       - key: AI_ROUTER_ENABLE_OPENAI
-        value: 'true'
+        value: 'false'
       - key: OPENAI_API_KEY
         sync: false
       - key: AI_ROUTER_ENABLE_ANTHROPIC
         value: 'false'
       - key: AI_ROUTER_ENABLE_GEMINI
-        value: 'false'
+        value: 'true'
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_ROUTER_ENABLE_GROQ
+        value: 'true'
+      - key: GROQ_API_KEY
+        sync: false
+      - key: AI_ROUTER_ENABLE_OPENROUTER
+        value: 'true'
+      - key: OPENROUTER_API_KEY
+        sync: false
       - key: AI_ROUTER_INTERNAL_TOKEN
         fromService:
           name: omniroute-api

@@ -302,6 +302,101 @@ class OpenAIAdapter(StreamingAdapter):
         return []
 
 
+class OpenAICompatibleChatAdapter(StreamingAdapter):
+    """Canonical adapter for providers that implement Chat Completions SSE.
+
+    The transport shape is shared deliberately; provider identity, endpoint, health,
+    registry entry, and persisted ModelRun remain provider-specific.
+    """
+
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+
+    def _payload(self, plan: ProviderExecutionPlan) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": plan.model.provider_model_id,
+            "messages": [
+                {"role": item.role, "content": item.content}
+                for item in plan.request.context.messages
+            ],
+            "max_tokens": plan.request.max_output_tokens,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if plan.request.temperature is not None:
+            body["temperature"] = plan.request.temperature
+        return body
+
+    def usage(self, payload: dict[str, Any]) -> NormalizedUsage:
+        return NormalizedUsage(
+            input_tokens=payload.get("prompt_tokens"),
+            output_tokens=payload.get("completion_tokens"),
+        )
+
+    def _normalize(
+        self, raw: dict[str, Any], plan: ProviderExecutionPlan, state: dict[str, Any]
+    ) -> list[ProviderEvent]:
+        if raw.get("error"):
+            error = raw["error"]
+            code, retryable = error_code(error.get("code") or error.get("type", ""))
+            return [normalized_failure(plan, code, retryable)]
+        events: list[ProviderEvent] = []
+        request_id = raw.get("id")
+        if request_id and not state.get("request_id"):
+            state["request_id"] = request_id
+            events.append(
+                ProviderEvent(
+                    type="run.started", run_id=plan.request.run_id, provider_request_id=request_id
+                )
+            )
+        choices = raw.get("choices", [])
+        if not isinstance(choices, list) or len(choices) > 1:
+            raise ValueError("Unexpected chat completion choices")
+        if choices:
+            choice = choices[0]
+            delta = choice.get("delta", {})
+            text = delta.get("content")
+            if text:
+                events.append(
+                    ProviderEvent(type="content.delta", run_id=plan.request.run_id, text=text)
+                )
+            reason = choice.get("finish_reason")
+            if reason:
+                state["finish_reason"] = "length" if reason == "length" else reason
+        if raw.get("usage") is not None:
+            usage = self.usage(raw["usage"])
+            events.append(
+                ProviderEvent(
+                    type="usage.updated",
+                    usage_final=bool(state.get("finish_reason")),
+                    run_id=plan.request.run_id,
+                    **usage.model_dump(exclude_none=True),
+                )
+            )
+        if state.get("finish_reason"):
+            if state["finish_reason"] in {"content_filter", "safety"}:
+                events.append(normalized_failure(plan, "SAFETY_STOP"))
+            elif raw.get("usage") is not None:
+                events.append(
+                    ProviderEvent(
+                        type="run.completed",
+                        run_id=plan.request.run_id,
+                        finish_reason=state["finish_reason"],
+                    )
+                )
+        return events
+
+
+class GroqAdapter(OpenAICompatibleChatAdapter):
+    provider: Literal["groq"] = "groq"
+    api_url = "https://api.groq.com/openai/v1/chat/completions"
+
+
+class OpenRouterAdapter(OpenAICompatibleChatAdapter):
+    provider: Literal["openrouter"] = "openrouter"
+    api_url = "https://openrouter.ai/api/v1/chat/completions"
+
+
 class AnthropicAdapter(StreamingAdapter):
     provider: Literal["anthropic"] = "anthropic"
     api_url = "https://api.anthropic.com/v1/messages"

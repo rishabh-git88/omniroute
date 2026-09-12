@@ -29,6 +29,7 @@ let origin: string;
 let cookie: string;
 let csrf: string;
 let modelKey: string;
+const modelKeys: Record<string, string> = {};
 const requests: Array<{
   body: {
     model: string;
@@ -67,7 +68,7 @@ async function command(path: string, body: object) {
     signal: AbortSignal.timeout(10000),
   });
 }
-async function start(content: string) {
+async function start(content: string, selectedModelKey = modelKey) {
   const conversation = await command('conversations', {
     title: 'Real execution protocol test',
   });
@@ -75,7 +76,7 @@ async function start(content: string) {
   const { id } = (await conversation.json()) as { id: string };
   const response = await command(`conversations/${id}/turns`, {
     content,
-    modelKey,
+    modelKey: selectedModelKey,
   });
   expect(response.status).toBe(201);
   return (await response.json()) as {
@@ -121,7 +122,9 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
       request.on('end', () => {
         if (
           request.url?.includes('/anthropic') ||
-          request.url?.includes('/gemini')
+          request.url?.includes('/gemini') ||
+          request.url?.includes('/groq') ||
+          request.url?.includes('/openrouter')
         ) {
           response.writeHead(200, { 'content-type': 'text/event-stream' });
           const send = (value: object) =>
@@ -144,7 +147,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
               usage: { output_tokens: 8 },
             });
             send({ type: 'message_stop' });
-          } else {
+          } else if (request.url.includes('/gemini')) {
             send({
               responseId: 'gemini_fixture',
               candidates: [
@@ -154,6 +157,19 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
                 },
               ],
               usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 8 },
+            });
+          } else {
+            const provider = request.url.includes('/groq')
+              ? 'groq'
+              : 'openrouter';
+            send({
+              id: `${provider}_fixture`,
+              choices: [{ delta: { content: `${provider} fixture response` } }],
+            });
+            send({
+              id: `${provider}_fixture`,
+              choices: [{ delta: {}, finish_reason: 'stop' }],
+              usage: { prompt_tokens: 12, completion_tokens: 8 },
             });
           }
           response.end();
@@ -299,6 +315,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
       update: { enabled: true },
     });
     modelKey = `openai:integration-${crypto.randomUUID()}`;
+    modelKeys.openai = modelKey;
     const model = await database.model.create({
       data: {
         modelKey,
@@ -337,7 +354,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
         },
       },
     });
-    for (const key of ['anthropic', 'gemini']) {
+    for (const key of ['anthropic', 'gemini', 'groq', 'openrouter']) {
       const provider = await database.provider.upsert({
         where: { key },
         create: { key, displayName: key, enabled: true },
@@ -345,12 +362,13 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
       });
       const model = await database.model.create({
         data: {
-          modelKey: `${key}:routing-fixture`,
+          modelKey: `${key}:routing-fixture-${crypto.randomUUID()}`,
           providerModelId: 'synthetic-routing-model',
           displayName: `${key} fixture`,
           providerId: provider.id,
         },
       });
+      modelKeys[key] = model.modelKey;
       await database.providerRegistryEntry.create({
         data: {
           modelId: model.id,
@@ -440,6 +458,26 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
     });
     expect(mockCalls).not.toHaveBeenCalled();
   });
+
+  it.each(['groq', 'openrouter'] as const)(
+    'preserves %s identity through NestJS, FastAPI, persistence, and SSE',
+    async (providerKey) => {
+      const operation = await start(
+        `${providerKey} selected`,
+        modelKeys[providerKey],
+      );
+      const stream = await (await events(operation.requestGroupId)).text();
+      expect(stream).toContain(`${providerKey} fixture response`);
+      const run = await saved(operation.runIds[0]!);
+      expect(run.provider.key).toBe(providerKey);
+      expect(run.model.modelKey).toBe(modelKeys[providerKey]);
+      expect(run.providerRequestId).toBe(`${providerKey}_fixture`);
+      expect(run.usageEvents[0]).toMatchObject({
+        inputTokens: 12n,
+        outputTokens: 8n,
+      });
+    },
+  );
 
   it.each([
     ['failure', 'PROVIDER_ERROR', 'settled'],

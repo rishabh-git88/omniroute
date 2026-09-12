@@ -93,9 +93,19 @@ registry validation, and configuration. Explicit model selection overrides
 ranking only after eligibility checks and disables automatic fallback.
 
 NestJS persists the decision, reserves credits, and sends canonical plans to
-`POST /providers/stream`. OpenAI, Anthropic, and Gemini stream through this same
-boundary. Provider health distinguishes unobserved configuration from measured
-availability and temporary failures. Router process concurrency is bounded.
+`POST /providers/stream`. OpenAI, Anthropic, Gemini, Groq, and OpenRouter stream
+through this same boundary. Provider availability is configuration- and
+registry-driven, not a conversation-domain provider list. Groq and OpenRouter
+share only an OpenAI-compatible transport normalizer; their IDs, models, health,
+usage, and persistence remain distinct. Provider health distinguishes unobserved
+configuration from measured availability and temporary failures. Router process
+concurrency is bounded. [[ADR-016-Extensible-Provider-Adapter-Ecosystem]] records
+the extension.
+
+`AI_EXECUTION_PROVIDER=multi` admits any enabled external adapter subject to
+registry review and request eligibility. It does not encode a fixed trio. Real
+Compare 3 remains disabled; its future candidates must be selected from eligible
+registry entries.
 
 Automatic modes permit up to two eligible fallback attempts before visible
 output for specific availability/transport failures. Each has its own persisted

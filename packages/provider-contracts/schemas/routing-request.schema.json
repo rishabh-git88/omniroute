@@ -35,7 +35,14 @@
           },
           "provider": {
             "type": "string",
-            "enum": ["fake", "openai", "anthropic", "gemini"]
+            "enum": [
+              "fake",
+              "openai",
+              "anthropic",
+              "gemini",
+              "groq",
+              "openrouter"
+            ]
           },
           "modelKey": {
             "type": "string",
@@ -120,7 +127,14 @@
         "properties": {
           "provider": {
             "type": "string",
-            "enum": ["fake", "openai", "anthropic", "gemini"]
+            "enum": [
+              "fake",
+              "openai",
+              "anthropic",
+              "gemini",
+              "groq",
+              "openrouter"
+            ]
           },
           "status": {
             "type": "string",

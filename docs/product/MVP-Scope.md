@@ -6,7 +6,9 @@
 
 - Google login, chat history, and a stable workspace shell.
 - Compare 3 and Single AI modes with independent streaming states.
-- OpenAI, Anthropic, and Gemini adapters behind [[Provider-Layer]].
+- OpenAI, Anthropic, Gemini, Groq, and OpenRouter adapters behind
+  [[Provider-Layer]], with runtime availability controlled by configuration and
+  the reviewed [[Model-Registry]].
 - Explicit response selection, active branch persistence, and provider switching.
 - Provider-neutral context using recent turns plus a versioned summary.
 - Text, files, a capability registry, and basic image-aware routing.

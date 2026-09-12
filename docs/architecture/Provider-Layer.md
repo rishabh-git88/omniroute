@@ -4,7 +4,9 @@
 
 ## Purpose
 
-Isolate OpenAI, Anthropic, Gemini, and future provider SDK/API churn behind canonical contracts inside the FastAPI AI Router service without flattening every capability to the lowest common denominator.
+Isolate OpenAI, Anthropic, Gemini, Groq, OpenRouter, and future provider SDK/API
+churn behind canonical contracts inside the FastAPI AI Router service without
+flattening every capability to the lowest common denominator.
 
 ## Canonical contract
 
@@ -25,6 +27,8 @@ Normalized events cover run start, content delta, tool call, usage update, compl
 - [[Provider-Layer#OpenAI adapter|OpenAI adapter]] targets the Responses API.
 - [[Provider-Layer#Anthropic adapter|Anthropic adapter]] targets the Messages API and its streaming events.
 - [[Provider-Layer#Gemini adapter|Gemini adapter]] targets the generateContent streaming API.
+- [[Provider-Layer#Groq adapter|Groq adapter]] targets Groq Chat Completions.
+- [[Provider-Layer#OpenRouter adapter|OpenRouter adapter]] targets OpenRouter Chat Completions.
 - Translate canonical context/tools to provider formats and provider output/errors/usage back to canonical types.
 - Implement cancellation, estimates, request correlation, timeouts, and provider-specific safe retry behavior.
 - Expose capability snapshots to [[Model-Registry]] and pass normalized events to [[AI-Router]].
@@ -40,6 +44,17 @@ The adapter translates Messages streaming and normalized usage while preserving 
 ## Gemini adapter
 
 The adapter translates generateContent requests/events and reports capability differences through typed metadata.
+
+## Groq adapter
+
+The adapter preserves `provider="groq"` while translating a canonical request to
+Groq's OpenAI-compatible stream.
+
+## OpenRouter adapter
+
+The adapter preserves `provider="openrouter"` while translating a canonical
+request to OpenRouter's OpenAI-compatible stream. Registry entries use a concrete
+model identity rather than the non-reproducible `openrouter/free` router.
 
 ## Inputs and outputs
 
@@ -69,14 +84,16 @@ Contract-test adapters with recorded/fake streams. Version adapters and run sche
 
 The MVP implementation lives in `services/ai-router/app/providers`. It exposes
 one canonical `generate`, `stream`, `capabilities`, `usage`, `health`, and
-`cancel` contract. OpenAI Responses, Anthropic Messages, and Gemini
-generateContent wire shapes stay in their respective adapters and are translated
-to normalized events before leaving this package. Adapter model identifiers,
+`cancel` contract. OpenAI Responses, Anthropic Messages, Gemini generateContent,
+and Groq/OpenRouter Chat Completions wire shapes stay in their respective
+adapters and are translated to normalized events before leaving this package.
+Groq and OpenRouter retain distinct provider identity despite their compatible
+wire format. Adapter model identifiers,
 capabilities, and pricing versions arrive in the immutable Model Registry
 snapshot supplied with the run plan; adapters contain no pricing or model
 capability table.
 
-Phase 6 connects all three adapters through NestJS → authenticated FastAPI SSE.
+Phase 6 connects all adapters through NestJS → authenticated FastAPI SSE.
 See [[ADR-014-Multi-Provider-Routing]] for normalized usage and terminal semantics,
 observed health, output limits, timeout/cancellation, bounded fallback, and
 verification boundaries. `generate` collects the same normalized stream. Interim

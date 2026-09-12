@@ -47,16 +47,18 @@ provider key, provider model identifier, registry version, capabilities, and
 pricing version. This gives the adapter the information it needs to translate a
 request while leaving pricing and capability policy in registry administration.
 
-The initial OpenAI candidate is versioned at
-`config/model-registry/openai-gpt-5-mini-v1.json`. Its published limits and
-pricing are imported disabled. Activating it requires a new reviewed registry
-version with task scores, quality, and latency evidence; an explicit
-`db:manage:registry` command then enables only that reviewed version.
+Versioned candidates currently cover OpenAI, Gemini, Groq, and OpenRouter under
+`config/model-registry/`. Published limits and pricing are imported disabled.
+Activating any candidate requires a reviewed registry version with task scores,
+quality, and latency evidence; the explicit `db:manage:registry` command then
+enables only that reviewed version. Gemini free-tier quota is not stored as a
+zero paid API price; the OpenRouter `:free` candidate is zero only because its
+specific documented endpoint price is zero.
 
 ## Related notes
 
 Milestone 2 adds a reviewed configuration seed path. Canonical real-provider
-metadata uses `openai`, `anthropic`, and `gemini`; legacy `google` is reconciled
+metadata uses `openai`, `anthropic`, `gemini`, `groq`, and `openrouter`; legacy `google` is reconciled
 transactionally with reference preservation. No real models/prices are supplied
 by default. Optional snapshots require explicit decimal prices and provenance,
 remain disabled, and cannot overwrite an existing registry version. The local

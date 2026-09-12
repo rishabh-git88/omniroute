@@ -5,7 +5,19 @@ export const providerIdSchema = z.enum([
   'openai',
   'anthropic',
   'gemini',
+  'groq',
+  'openrouter',
 ]);
+
+/** Providers which may execute external model calls when enabled at runtime. */
+export const externalProviderIdSchema = z.enum([
+  'openai',
+  'anthropic',
+  'gemini',
+  'groq',
+  'openrouter',
+]);
+export const externalProviderIds = externalProviderIdSchema.options;
 
 export const canonicalMessageSchema = z.strictObject({
   content: z.string().min(1),
@@ -123,7 +135,7 @@ export interface AIProvider {
 export const providerExecutionPlanSchema = z.strictObject({
   request: canonicalChatRequestSchema,
   model: z.strictObject({
-    provider: z.enum(['openai', 'anthropic', 'gemini']),
+    provider: externalProviderIdSchema,
     providerModelId: z.string().min(1),
     registryVersion: z.number().int().positive(),
     capabilities: z.record(z.string(), z.unknown()),

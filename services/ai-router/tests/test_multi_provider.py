@@ -19,9 +19,13 @@ def settings(**kwargs: Any) -> Settings:
         enable_openai=True,
         enable_anthropic=True,
         enable_gemini=True,
+        enable_groq=True,
+        enable_openrouter=True,
         openai_api_key="synthetic",
         anthropic_api_key="synthetic",
         gemini_api_key="synthetic",
+        groq_api_key="synthetic",
+        openrouter_api_key="synthetic",
         **kwargs,
     )
 
@@ -63,6 +67,17 @@ def wire(provider: str, finish: str = "stop") -> list[dict[str, Any]]:
             },
             {"type": "message_stop"},
         ]
+    if provider in {"groq", "openrouter"}:
+        return [
+            {"id": "request-test", "choices": [{"delta": {"content": "hello"}}]},
+            {
+                "id": "request-test",
+                "choices": [
+                    {"delta": {}, "finish_reason": "stop" if finish == "stop" else "length"}
+                ],
+                "usage": {"prompt_tokens": 20, "completion_tokens": 5},
+            },
+        ]
     return [
         {"responseId": "request-test", "candidates": [{"content": {"parts": [{"text": "hello"}]}}]},
         {
@@ -77,7 +92,7 @@ def wire(provider: str, finish: str = "stop") -> list[dict[str, Any]]:
     ]
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
 @pytest.mark.parametrize("finish", ["stop", "length"])
 def test_actual_wire_usage_finish_request_identity_and_output_caps(
     provider: str, finish: str
@@ -106,10 +121,12 @@ def test_actual_wire_usage_finish_request_identity_and_output_caps(
         else body["max_tokens"]
         if provider == "anthropic"
         else body["max_output_tokens"]
+        if provider == "openai"
+        else body["max_tokens"]
     ) == 100
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
 def test_timeout_and_cancellation_close_each_provider(provider: str) -> None:
     async def run() -> None:
         config = settings(request_timeout_seconds=0.01)
@@ -138,7 +155,7 @@ def test_timeout_and_cancellation_close_each_provider(provider: str) -> None:
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
 @pytest.mark.parametrize(
     ("status", "code", "health"),
     [
@@ -167,7 +184,7 @@ def test_normalized_errors_and_observed_health(
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
 def test_eof_cannot_be_success_and_generate_shares_normalization(provider: str) -> None:
     async def run() -> None:
         registry = ProviderRegistry(settings(), MockTransport([]))
@@ -215,7 +232,7 @@ def test_anthropic_interim_usage_cannot_complete_a_malformed_final_stream() -> N
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
 def test_closing_before_dispatch_removes_cancellation_ownership(provider: str) -> None:
     async def run() -> None:
         request = execution_plan(provider)
@@ -232,7 +249,7 @@ def test_closing_before_dispatch_removes_cancellation_ownership(provider: str) -
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini"])
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
 def test_generate_endpoint_returns_the_same_canonical_usage_and_completion(
     provider: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -261,5 +278,62 @@ def test_generate_endpoint_returns_the_same_canonical_usage_and_completion(
                 "providerRequestId": "request-test",
                 "usage": {"inputTokens": 20, "outputTokens": 5, "totalTokens": 25},
             }
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("provider", ["openai", "anthropic", "gemini", "groq", "openrouter"])
+def test_provider_usage_above_requested_output_limit_is_persisted_then_fails(provider: str) -> None:
+    events = wire(provider)
+    final = events[-1]
+    if provider == "openai":
+        final["response"]["usage"]["output_tokens"] = 101
+    elif provider == "anthropic":
+        events[-2]["usage"]["output_tokens"] = 101
+    elif provider == "gemini":
+        final["usageMetadata"]["candidatesTokenCount"] = 101
+        final["usageMetadata"]["thoughtsTokenCount"] = 0
+    else:
+        final["usage"]["completion_tokens"] = 101
+
+    async def run() -> None:
+        config = settings()
+        result = [
+            event
+            async for event in execute(
+                execution_plan(provider), ProviderRegistry(config, MockTransport(events)), config
+            )
+        ]
+        assert result[-1].code == "OUTPUT_LIMIT_EXCEEDED"
+        assert [event for event in result if event.type == "usage.updated"][-1].output_tokens == 101
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("provider", "malformed"),
+    [
+        ("openai", {"type": "response.completed", "response": {"usage": "bad"}}),
+        ("anthropic", {"type": "message_start", "message": {"usage": "bad"}}),
+        ("gemini", {"candidates": {"not": "a-list"}}),
+        ("groq", {"choices": "not-a-list"}),
+        ("openrouter", {"choices": "not-a-list"}),
+    ],
+)
+def test_malformed_provider_events_are_terminal_normalized_failures(
+    provider: str, malformed: dict[str, Any]
+) -> None:
+    async def run() -> None:
+        config = settings()
+        result = [
+            event
+            async for event in execute(
+                execution_plan(provider),
+                ProviderRegistry(config, MockTransport([malformed])),
+                config,
+            )
+        ]
+        assert result[-1].code == "PROVIDER_PROTOCOL_ERROR"
+        assert sum(event.type in {"run.completed", "run.failed"} for event in result) == 1
 
     asyncio.run(run())

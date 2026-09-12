@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     enable_openai: bool = False
     enable_anthropic: bool = False
     enable_gemini: bool = False
+    enable_groq: bool = False
+    enable_openrouter: bool = False
     openai_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("OPENAI_API_KEY", "AI_ROUTER_OPENAI_API_KEY"),
@@ -39,6 +41,16 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("GEMINI_API_KEY", "AI_ROUTER_GEMINI_API_KEY"),
+        repr=False,
+    )
+    groq_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GROQ_API_KEY", "AI_ROUTER_GROQ_API_KEY"),
+        repr=False,
+    )
+    openrouter_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENROUTER_API_KEY", "AI_ROUTER_OPENROUTER_API_KEY"),
         repr=False,
     )
     anthropic_version: str = "2023-06-01"

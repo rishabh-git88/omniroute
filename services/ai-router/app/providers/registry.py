@@ -1,6 +1,13 @@
 from app.config import Settings
 from app.contracts import ProviderExecutionPlan, ProviderHealth
-from app.providers.adapters import AnthropicAdapter, GeminiAdapter, OpenAIAdapter, StreamingAdapter
+from app.providers.adapters import (
+    AnthropicAdapter,
+    GeminiAdapter,
+    GroqAdapter,
+    OpenAIAdapter,
+    OpenRouterAdapter,
+    StreamingAdapter,
+)
 from app.providers.base import ProviderAdapter, ProviderTransport
 from app.providers.http_transport import HttpTransport
 
@@ -23,6 +30,14 @@ class ProviderRegistry:
             ),
             "gemini": GeminiAdapter(
                 enabled=settings.enable_gemini, api_key=settings.gemini_api_key, transport=http
+            ),
+            "groq": GroqAdapter(
+                enabled=settings.enable_groq, api_key=settings.groq_api_key, transport=http
+            ),
+            "openrouter": OpenRouterAdapter(
+                enabled=settings.enable_openrouter,
+                api_key=settings.openrouter_api_key,
+                transport=http,
             ),
         }
 

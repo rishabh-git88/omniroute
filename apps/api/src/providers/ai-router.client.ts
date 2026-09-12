@@ -6,6 +6,7 @@ import {
   routingDecisionSchema,
   routingRequestSchema,
   providerExecutionPlanSchema,
+  externalProviderIds,
   type ProviderEvent,
   type ProviderExecutionPlan,
 } from '@omniroute/provider-contracts';
@@ -168,9 +169,10 @@ export class AiRouterClient {
   ): AsyncIterable<ProviderEvent> {
     const config = parseApiEnvironment(process.env);
     if (
-      !['openai', 'anthropic', 'gemini', 'multi'].includes(
-        config.AI_EXECUTION_PROVIDER,
-      ) ||
+      (config.AI_EXECUTION_PROVIDER !== 'multi' &&
+        !externalProviderIds.includes(
+          config.AI_EXECUTION_PROVIDER as (typeof externalProviderIds)[number],
+        )) ||
       !config.AI_ROUTER_INTERNAL_TOKEN
     )
       throw new ProviderExecutionError('PROVIDER_DISABLED');

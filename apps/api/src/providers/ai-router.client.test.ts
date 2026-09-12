@@ -165,7 +165,7 @@ describe('authenticated router client', () => {
       expect(upstreamSignal?.aborted).toBe(true);
     },
   );
-  it('disables mock execution in production and requires internal configuration for OpenAI', () => {
+  it('disables mock execution in production and requires internal configuration for real providers', () => {
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('AI_EXECUTION_PROVIDER', undefined);
     expect(executionProvider()).toBeUndefined();
@@ -177,5 +177,11 @@ describe('authenticated router client', () => {
     vi.stubEnv('AI_ROUTER_INTERNAL_TOKEN', options.token);
     vi.stubEnv('AI_ROUTER_URL', options.origin);
     expect(executionProvider()).toBe('openai');
+    vi.stubEnv('AI_EXECUTION_PROVIDER', 'groq');
+    expect(executionProvider()).toBe('groq');
+    vi.stubEnv('AI_EXECUTION_PROVIDER', 'openrouter');
+    expect(executionProvider()).toBe('openrouter');
+    vi.stubEnv('AI_EXECUTION_PROVIDER', 'multi');
+    expect(executionProvider()).toBe('multi');
   });
 });

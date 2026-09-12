@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { parseRegistrySeed } from './registry-seed.js';
 
@@ -94,3 +95,59 @@ it.each([
     }),
   ).toThrow();
 });
+
+it('validates the versioned OpenAI candidate with official pricing provenance', async () => {
+  const source = await readFile(
+    new URL(
+      '../../../config/model-registry/openai-gpt-5-mini-v1.json',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  expect(parseRegistrySeed(JSON.parse(source))).toMatchObject([
+    {
+      provider: 'openai',
+      modelKey: 'openai:gpt-5-mini',
+      providerModelId: 'gpt-5-mini',
+      pricing: {
+        inputPerMillionTokens: '0.25000000',
+        outputPerMillionTokens: '2.00000000',
+      },
+    },
+  ]);
+});
+
+it.each([
+  [
+    'gemini-2.5-flash-v1.json',
+    'gemini',
+    'gemini:gemini-2.5-flash',
+    '0.30000000',
+  ],
+  [
+    'groq-openai-gpt-oss-120b-v1.json',
+    'groq',
+    'groq:openai-gpt-oss-120b',
+    '0.15000000',
+  ],
+  [
+    'openrouter-nemotron-3-ultra-free-v1.json',
+    'openrouter',
+    'openrouter:nvidia-nemotron-3-ultra-550b-a55b:free',
+    '0',
+  ],
+])(
+  'validates the reviewed %s provider candidate without activating routing metadata',
+  async (file, provider, modelKey, inputPrice) => {
+    const source = await readFile(
+      new URL(`../../../config/model-registry/${file}`, import.meta.url),
+      'utf8',
+    );
+    const [model] = parseRegistrySeed(JSON.parse(source));
+    expect(model).toMatchObject({ provider, modelKey });
+    expect(model?.pricing.inputPerMillionTokens).toBe(inputPrice);
+    expect(() => validateRoutingRegistry(model)).toThrow(
+      'Reviewed routing metadata is required',
+    );
+  },
+);

@@ -1,0 +1,30 @@
+{
+  "models": [
+    {
+      "provider": "groq",
+      "modelKey": "groq:openai-gpt-oss-120b",
+      "providerModelId": "openai/gpt-oss-120b",
+      "displayName": "GPT-OSS 120B on Groq",
+      "registryVersion": 1,
+      "capabilities": {
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "files": false,
+        "images": false,
+        "search": false,
+        "tools": false,
+        "contextWindow": 131072,
+        "maxOutputTokens": 65536
+      },
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": "0.15000000",
+        "outputPerMillionTokens": "0.60000000",
+        "sourceUrl": "https://console.groq.com/docs/model/openai/gpt-oss-120b",
+        "reviewedAt": "2026-09-12T00:00:00Z"
+      },
+      "pricingVersion": "groq-openai-gpt-oss-120b-2026-09-12",
+      "effectiveAt": "2026-09-12T00:00:00Z",
+      "regionConstraints": []
+    }
+  ]
+}

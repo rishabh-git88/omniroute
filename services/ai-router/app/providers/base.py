@@ -78,7 +78,7 @@ class ProviderTransportError(Exception):
 class ProviderAdapter(ABC):
     """The one provider-neutral execution contract used by router orchestration."""
 
-    provider: Literal["openai", "anthropic", "gemini"]
+    provider: Literal["openai", "anthropic", "gemini", "groq", "openrouter"]
 
     @abstractmethod
     async def generate(self, plan: ProviderExecutionPlan) -> tuple[str, NormalizedUsage]: ...

@@ -81,7 +81,7 @@ class CanonicalChatRequest(CanonicalWireModel):
     context_snapshot_id: CanonicalUUID
     max_output_tokens: Annotated[int, Field(gt=0, le=9007199254740991, strict=True)]
     model_key: Annotated[str, Field(min_length=1)]
-    provider: Literal["fake", "openai", "anthropic", "gemini"]
+    provider: Literal["fake", "openai", "anthropic", "gemini", "groq", "openrouter"]
     run_id: CanonicalUUID
     temperature: Annotated[float, Field(ge=0, le=2, strict=True)] | None = None
 
@@ -89,7 +89,7 @@ class CanonicalChatRequest(CanonicalWireModel):
 class RegistryModelSnapshot(CanonicalWireModel):
     """The reviewed Model Registry entry selected by Nest before provider execution."""
 
-    provider: Literal["openai", "anthropic", "gemini"]
+    provider: Literal["openai", "anthropic", "gemini", "groq", "openrouter"]
     provider_model_id: Annotated[str, Field(min_length=1)]
     registry_version: Annotated[int, Field(gt=0, le=9007199254740991, strict=True)]
     capabilities: dict[str, object]
@@ -143,7 +143,7 @@ HealthStatus = Literal[
 
 
 class ProviderHealth(ContractModel):
-    provider: Literal["openai", "anthropic", "gemini"]
+    provider: Literal["openai", "anthropic", "gemini", "groq", "openrouter"]
     status: HealthStatus
     latency_ms: int | None = None
 
@@ -191,7 +191,7 @@ class RoutingModelSnapshot(ContractModel):
     """Dynamic Model Registry data. Scores/costs are configuration, never router constants."""
 
     registry_entry_id: UUID
-    provider: Literal["openai", "anthropic", "gemini", "fake"]
+    provider: Literal["openai", "anthropic", "gemini", "groq", "openrouter", "fake"]
     model_key: Annotated[str, Field(min_length=1)]
     provider_model_id: Annotated[str, Field(min_length=1)]
     registry_version: Annotated[int, Field(gt=0, le=9007199254740991, strict=True)]
@@ -204,7 +204,7 @@ class RoutingModelSnapshot(ContractModel):
 
 
 class ProviderHealthSnapshot(ContractModel):
-    provider: Literal["openai", "anthropic", "gemini", "fake"]
+    provider: Literal["openai", "anthropic", "gemini", "groq", "openrouter", "fake"]
     status: HealthStatus
     latency_ms: Annotated[int, Field(ge=0, le=9007199254740991, strict=True)] | None = None
 
