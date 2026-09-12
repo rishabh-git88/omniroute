@@ -1,5 +1,25 @@
 # OmniRoute Current State
 
+## Phase 0 production-baseline update
+
+Date: 2026-09-12. The current deployment architecture is Vercel at
+`https://oneroute-ai.vercel.app`, with Vercel rewriting `/v1` to the Render
+NestJS API; the Render FastAPI service, Supabase PostgreSQL, and existing Render
+Key Value service remain backend dependencies. CI source configuration now
+supplies both synthetic build inputs: `NEXT_PUBLIC_API_URL` and
+`RENDER_API_ORIGIN`, each set to `https://api.ci.invalid`.
+
+The web Docker image now receives both build arguments as well. Local Docker
+verification is blocked on this workstation because its Docker socket is not
+accessible. GitHub-hosted CI could not be queried because the available GitHub
+CLI token is invalid. These are not passing CI or image evidence. On 2026-09-12,
+the public frontend, `/v1/health`, and `/v1/health/ready` each returned HTTP 200
+through Vercel; the two API responses identified Render as their origin. OAuth
+initiation redirected to Google with secure temporary cookies, and a deliberately
+invalid session was rejected with HTTP 401. Interactive Google login, callback,
+session persistence, logout, expiry, and authenticated CSRF behavior remain open
+until tested with an authorized account.
+
 Planning reset: 2026-09-10. Overall status: **PARTIAL**. OmniRoute has substantial
 foundations and passing local checks, but its required production product is not
 complete. The connected conversation executor still uses a NestJS mock provider;
@@ -262,7 +282,7 @@ dependency-ordered backlog item that owns completion.
 | CI release gate | PARTIAL | Source ordering/configuration repaired; fresh-source frontend/API tests pass. No GitHub-hosted run exists for these uncommitted changes. | R01 |
 | Docker image verification | BLOCKED | Milestone 2 attempted actual builds; storage exhaustion interrupted verification. See MILESTONE-2-VERIFICATION for the final per-image results. | R01 |
 | Observability | PARTIAL | Structured logging, request IDs, optional Node OpenTelemetry and metrics foundations exist. Normal API request logs now omit OAuth queries and credential headers; CloudWatch, ingress log policy, alerts, and cross-service correlation remain. | R15 |
-| Vercel deployment readiness | PARTIAL | A historical successful deployment status exists, but its inspected URL redirected to Vercel SSO; public runtime behavior and current release revision were not verified. | R02, R14, R16 |
+| Vercel deployment readiness | PARTIAL | On 2026-09-12, the public frontend and both Vercel-proxied API health endpoints returned HTTP 200, with Render identified as the API origin. Current deployed commit identity, live OAuth completion, and the remaining release gates are unverified. | R02, R14, R16 |
 | Production browser acceptance | BLOCKED | An accessible representative deployment and completed environment/auth integration are required. | R14, R16 |
 | AWS deployment implementation | NOT STARTED | No IaC or AWS CD implementation for ECS/Fargate, RDS, ElastiCache, S3, Secrets Manager, ALB, CloudWatch, or OIDC was found. | R14, R15 |
 | AWS deployed-state verification | BLOCKED | No authenticated AWS inventory or accessible deployment evidence was available. Repository absence alone cannot prove account resources are absent. | R14, R16 |

@@ -12,7 +12,8 @@ trap cleanup EXIT
 build_failed=false
 docker build -f infrastructure/docker/api.Dockerfile -t omniroute-api:verify . || build_failed=true
 docker build -f infrastructure/docker/web.Dockerfile -t omniroute-web:verify \
-  --build-arg NEXT_PUBLIC_API_URL=https://api.ci.invalid . || build_failed=true
+  --build-arg NEXT_PUBLIC_API_URL=https://api.ci.invalid \
+  --build-arg RENDER_API_ORIGIN=https://api.ci.invalid . || build_failed=true
 docker build -f infrastructure/docker/ai-router.Dockerfile -t omniroute-ai-router:verify . || build_failed=true
 if [ "$build_failed" = true ]; then exit 1; fi
 

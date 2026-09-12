@@ -1,7 +1,9 @@
 FROM node:24.20.0-bookworm-slim AS build
 
 ARG NEXT_PUBLIC_API_URL
+ARG RENDER_API_ORIGIN
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV RENDER_API_ORIGIN=$RENDER_API_ORIGIN
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -25,6 +27,7 @@ COPY packages/types packages/types
 COPY packages/ui packages/ui
 
 RUN test -n "$NEXT_PUBLIC_API_URL" \
+  && test -n "$RENDER_API_ORIGIN" \
   && pnpm --filter @omniroute/web... build
 
 FROM node:24.20.0-bookworm-slim AS runtime

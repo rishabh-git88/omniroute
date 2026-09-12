@@ -22,8 +22,10 @@ open gates. No provider integration was performed.
 **Milestone: establish a reproducible, authenticated browser-to-database baseline.**
 
 Current status: **PARTIAL**. Browser/API and local database repairs now have
-verification evidence. Image/startup gates, a green GitHub run for the repaired
-revision, and live authentication on the configured domains remain open.
+verification evidence. The current CI source supplies both required synthetic
+Next.js build origins, and Docker image verification supplies both image build
+arguments. Image/startup gates, a green GitHub run for the repaired revision,
+and live authentication on the configured domains remain open.
 
 This milestone is a bounded plan for the next implementation task. Creating this
 document does not start implementation, apply migrations, provision cloud

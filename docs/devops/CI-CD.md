@@ -35,9 +35,9 @@ Compose configuration, builds every deployable, and validates all production
 Dockerfiles.
 
 Frontend and API test jobs run through Turbo's dependency graph so exported
-shared packages are built first. The build environment explicitly supplies the
-synthetic `NEXT_PUBLIC_API_URL=https://api.ci.invalid`; it uses no production
-credentials.
+shared packages are built first. The build environment explicitly supplies
+synthetic `NEXT_PUBLIC_API_URL=https://api.ci.invalid` and
+`RENDER_API_ORIGIN=https://api.ci.invalid`; it uses no production credentials.
 
 The integration job bootstraps restricted, marked `omniroute_integration` and
 `omniroute_integration_upgrade` databases. It builds API workspace dependencies,
