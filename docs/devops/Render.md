@@ -62,12 +62,41 @@ The Blueprint sync prompts for these API values:
 | `GOOGLE_CLIENT_ID` | Production Google OAuth web-client ID |
 | `GOOGLE_CLIENT_SECRET` | Matching production Google OAuth client secret |
 | `REDIS_URL` | Private connection string from the existing Render Key Value instance |
+| `OPENAI_API_KEY` | OpenAI project API key, entered only on `omniroute-ai-router` |
 
 Do not create a second Free Key Value instance. Copy the existing instance's
 internal/private connection string into `REDIS_URL`; never commit or expose it.
-Do not add `AUTH_COOKIE_DOMAIN`. Do not enter provider keys yet; provider
-adapters remain disabled until their credentials and reviewed registry entries
-are ready.
+Do not add `AUTH_COOKIE_DOMAIN`. Keep Anthropic and Gemini keys unset. OpenAI
+activation is described below and remains blocked by the reviewed registry gate.
+
+## OpenAI single-provider activation
+
+The Blueprint configures `AI_EXECUTION_PROVIDER=openai` on the API and
+`AI_ROUTER_ENABLE_OPENAI=true` on the AI Router. Render prompts for
+`OPENAI_API_KEY` only on the AI Router service; enter an OpenAI project key
+there and never add it to Vercel or the API service.
+
+[`config/model-registry/openai-gpt-5-mini-v1.json`](../../config/model-registry/openai-gpt-5-mini-v1.json)
+records OpenAI's documented `gpt-5-mini` identity, text limits, and standard
+input/output pricing. Its importer creates the entry disabled. Before activation,
+an authorized operator must add internally reviewed `taskScores`, `qualityScore`,
+and `typicalLatencyMs` to a new immutable registry version. This prevents
+unmeasured routing metadata from enabling paid traffic.
+
+From a trusted operator machine with the Supabase production `DATABASE_URL`, run
+the explicit administrative import after reviewing the JSON file. The command
+does not print the connection string or provider key:
+
+```bash
+MODEL_REGISTRY_ADMIN_CONFIRM=approve-reviewed-registry-import \
+MODEL_REGISTRY_SEED_FILE=config/model-registry/openai-gpt-5-mini-v1.json \
+pnpm --filter @omniroute/api db:manage:registry
+```
+
+After adding approved routing metadata in a new registry version, rerun with
+`MODEL_REGISTRY_ACTIVATE=true` to enable the provider and its `GENERAL` rollout.
+Run the production smoke manually only after Render has the OpenAI key. No live
+provider test runs in CI.
 
 ## Vercel and Google configuration
 

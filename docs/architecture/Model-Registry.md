@@ -47,6 +47,12 @@ provider key, provider model identifier, registry version, capabilities, and
 pricing version. This gives the adapter the information it needs to translate a
 request while leaving pricing and capability policy in registry administration.
 
+The initial OpenAI candidate is versioned at
+`config/model-registry/openai-gpt-5-mini-v1.json`. Its published limits and
+pricing are imported disabled. Activating it requires a new reviewed registry
+version with task scores, quality, and latency evidence; an explicit
+`db:manage:registry` command then enables only that reviewed version.
+
 ## Related notes
 
 Milestone 2 adds a reviewed configuration seed path. Canonical real-provider

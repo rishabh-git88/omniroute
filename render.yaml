@@ -32,10 +32,10 @@ services:
         value: '24'
       - key: AUTH_SESSION_ROTATION_MINUTES
         value: '15'
-      # Provider adapters stay intentionally disabled until their credentials
-      # and reviewed registry entries are configured.
+      # The OpenAI adapter is enabled here, but execution still fails closed
+      # until a reviewed General-rollout registry entry is activated.
       - key: AI_EXECUTION_PROVIDER
-        value: disabled
+        value: openai
       - key: DATABASE_URL
         sync: false
       - key: GOOGLE_CLIENT_ID
@@ -78,7 +78,9 @@ services:
       - key: AI_ROUTER_LOG_LEVEL
         value: info
       - key: AI_ROUTER_ENABLE_OPENAI
-        value: 'false'
+        value: 'true'
+      - key: OPENAI_API_KEY
+        sync: false
       - key: AI_ROUTER_ENABLE_ANTHROPIC
         value: 'false'
       - key: AI_ROUTER_ENABLE_GEMINI
