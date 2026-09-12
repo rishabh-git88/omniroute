@@ -163,7 +163,20 @@ def test_adapters_hide_wire_formats_behind_normalized_events(
 
 
 def test_registry_requires_explicit_enablement_and_never_exposes_keys() -> None:
-    registry = ProviderRegistry(Settings(enable_openai=True, openai_api_key="not-for-logs"))
+    registry = ProviderRegistry(
+        Settings(
+            enable_openai=True,
+            enable_anthropic=False,
+            enable_gemini=False,
+            enable_groq=False,
+            enable_openrouter=False,
+            openai_api_key="not-for-logs",
+            anthropic_api_key=None,
+            gemini_api_key=None,
+            groq_api_key=None,
+            openrouter_api_key=None,
+        )
+    )
     states = asyncio.run(registry.health())
 
     assert {state.provider: state.status for state in states} == {
@@ -177,8 +190,63 @@ def test_registry_requires_explicit_enablement_and_never_exposes_keys() -> None:
 
 
 def test_enabled_adapter_without_a_credential_is_unavailable_without_startup_failure() -> None:
-    registry = ProviderRegistry(Settings(enable_groq=True, enable_openrouter=True))
+    registry = ProviderRegistry(
+        Settings(
+            enable_groq=True, enable_openrouter=True, groq_api_key=None, openrouter_api_key=None
+        )
+    )
     states = {state.provider: state.status for state in asyncio.run(registry.health())}
 
     assert states["groq"] == "missing_credentials"
     assert states["openrouter"] == "missing_credentials"
+
+
+def test_gemini_groq_and_openrouter_requests_follow_their_provider_contracts() -> None:
+    transport = MockTransport([])
+    gemini = GeminiAdapter(enabled=True, api_key="gemini-test-key", transport=transport)
+    groq = GroqAdapter(enabled=True, api_key="groq-test-key", transport=transport)
+    openrouter = OpenRouterAdapter(enabled=True, api_key="openrouter-test-key", transport=transport)
+
+    gemini_plan = plan("gemini")
+    gemini_plan = gemini_plan.model_copy(
+        update={
+            "model": gemini_plan.model.model_copy(update={"provider_model_id": "gemini-2.5-flash"})
+        }
+    )
+    gemini_url = gemini._url(gemini_plan)
+    gemini_body = gemini._payload(gemini_plan)
+    assert gemini_url == (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-2.5-flash:streamGenerateContent?alt=sse"
+    )
+    assert gemini._headers() == {
+        "x-goog-api-key": "gemini-test-key",
+        "Content-Type": "application/json",
+    }
+    assert gemini_body == {
+        "contents": [{"role": "user", "parts": [{"text": "hello"}]}],
+        "generationConfig": {"maxOutputTokens": 100, "candidateCount": 1},
+    }
+
+    for adapter, provider, endpoint, key in (
+        (groq, "groq", "https://api.groq.com/openai/v1/chat/completions", "groq-test-key"),
+        (
+            openrouter,
+            "openrouter",
+            "https://openrouter.ai/api/v1/chat/completions",
+            "openrouter-test-key",
+        ),
+    ):
+        request = plan(provider)
+        assert adapter._url(request) == endpoint
+        assert adapter._headers() == {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        assert adapter._payload(request) == {
+            "model": "reviewed-model-id",
+            "messages": [{"role": "user", "content": "hello"}],
+            "max_tokens": 100,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }

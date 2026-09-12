@@ -12,7 +12,12 @@ from app.contracts import (
     ProviderExecutionPlan,
     ProviderHealth,
 )
-from app.providers.base import ProviderAdapter, ProviderTransport, ProviderTransportError
+from app.providers.base import (
+    ProviderAdapter,
+    ProviderErrorDiagnostic,
+    ProviderTransport,
+    ProviderTransportError,
+)
 
 
 def normalized_failure(
@@ -51,12 +56,16 @@ class StreamingAdapter(ProviderAdapter):
         self._observed: HealthStatus = "enabled"
         self._observed_at = 0.0
         self._latency: int | None = None
+        self._last_diagnostic: ProviderErrorDiagnostic | None = None
 
     def observe(self, code: str | None, latency_ms: int) -> None:
         states: dict[str, HealthStatus] = {
             "RATE_LIMITED": "rate_limited",
             "PROVIDER_TIMEOUT": "timed_out",
-            "PROVIDER_AUTH_FAILED": "missing_credentials",
+            # A configured key that upstream rejects is categorically different
+            # from an omitted key.  Keeping this state prevents later requests
+            # from being misreported as locally missing credentials.
+            "PROVIDER_AUTH_FAILED": "invalid_credentials",
             "PROVIDER_TEMPORARY_ERROR": "temporarily_unhealthy",
             "NETWORK_ERROR": "temporarily_unhealthy",
             "STREAM_TRUNCATED": "temporarily_unhealthy",
@@ -98,6 +107,11 @@ class StreamingAdapter(ProviderAdapter):
             status = "enabled"  # configured, but unobserved; an actual request may probe it
         return ProviderHealth(provider=self.provider, status=status, latency_ms=self._latency)
 
+    def last_diagnostic(self) -> ProviderErrorDiagnostic | None:
+        """For the guarded local evaluator; never emitted on the public API."""
+
+        return self._last_diagnostic
+
     async def cancel(self, run_id: str) -> None:
         task = self._tasks.get(run_id)
         if task:
@@ -107,6 +121,7 @@ class StreamingAdapter(ProviderAdapter):
         return self.api_url
 
     async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
+        self._last_diagnostic = None
         if not self._enabled or not self._api_key:
             yield normalized_failure(
                 plan, "PROVIDER_DISABLED" if not self._enabled else "PROVIDER_MISSING_CREDENTIALS"
@@ -161,6 +176,7 @@ class StreamingAdapter(ProviderAdapter):
         except TimeoutError:
             yield normalized_failure(plan, "PROVIDER_TIMEOUT", True)
         except ProviderTransportError as error:
+            self._last_diagnostic = error.diagnostic
             status = error.status_code
             code = (
                 "PROVIDER_TIMEOUT"

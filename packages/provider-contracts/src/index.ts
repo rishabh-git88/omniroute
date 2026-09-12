@@ -150,6 +150,7 @@ export const providerHealthStatusSchema = z.enum([
   'disabled',
   'enabled',
   'missing_credentials',
+  'invalid_credentials',
   'temporarily_unhealthy',
   'rate_limited',
   'timed_out',

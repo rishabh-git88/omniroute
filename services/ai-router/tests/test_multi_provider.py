@@ -160,7 +160,8 @@ def test_timeout_and_cancellation_close_each_provider(provider: str) -> None:
     ("status", "code", "health"),
     [
         (429, "RATE_LIMITED", "rate_limited"),
-        (401, "PROVIDER_AUTH_FAILED", "missing_credentials"),
+        (401, "PROVIDER_AUTH_FAILED", "invalid_credentials"),
+        (403, "PROVIDER_AUTH_FAILED", "invalid_credentials"),
         (503, "PROVIDER_TEMPORARY_ERROR", "temporarily_unhealthy"),
         (400, "PROVIDER_INVALID_REQUEST", "enabled"),
     ],
@@ -180,6 +181,25 @@ def test_normalized_errors_and_observed_health(
         assert result[-1].code == code
         assert "sensitive" not in repr(result)
         assert (await registry.for_plan(execution_plan(provider)).health()).status == health
+
+    asyncio.run(run())
+
+
+def test_rejected_key_remains_an_auth_failure_on_subsequent_requests() -> None:
+    class ErrorTransport(MockTransport):
+        async def stream_sse(self, *args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+            raise ProviderTransportError(401, "Provider request failed")
+            yield {}
+
+    async def run() -> None:
+        config = settings()
+        registry = ProviderRegistry(config, ErrorTransport([]))
+        first = [event async for event in execute(execution_plan("groq"), registry, config)]
+        second = [event async for event in execute(execution_plan("groq"), registry, config)]
+        assert first[-1].code == "PROVIDER_AUTH_FAILED"
+        assert second[-1].code == "PROVIDER_AUTH_FAILED"
+        health = await registry.for_plan(execution_plan("groq")).health()
+        assert health.status == "invalid_credentials"
 
     asyncio.run(run())
 

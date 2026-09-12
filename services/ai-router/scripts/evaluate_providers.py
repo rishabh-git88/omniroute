@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.config import Settings  # noqa: E402
 from app.contracts import ProviderExecutionPlan  # noqa: E402
 from app.execution import execute  # noqa: E402
+from app.providers.adapters import StreamingAdapter  # noqa: E402
 from app.providers.registry import ProviderRegistry  # noqa: E402
 
 CONFIRMATION = "run-real-provider-evaluation"
@@ -34,6 +35,11 @@ CANDIDATES: dict[Provider, str] = {
     "gemini": "gemini-2.5-flash-v1.json",
     "groq": "groq-openai-gpt-oss-120b-v1.json",
     "openrouter": "openrouter-nemotron-3-ultra-free-v1.json",
+}
+PERMANENT_CONFIGURATION_FAILURES = {
+    "PROVIDER_AUTH_FAILED",
+    "PROVIDER_MISSING_CREDENTIALS",
+    "PROVIDER_DISABLED",
 }
 
 # All acceptance checks are deterministic and prompts contain no private data.
@@ -127,7 +133,8 @@ async def run_case(
     request_id: str | None = None
     usage: dict[str, int | None] = {"inputTokens": None, "outputTokens": None, "totalTokens": None}
     terminal = "STREAM_TRUNCATED"
-    async for event in execute(plan_for(provider, model, prompt), registry, settings):
+    plan = plan_for(provider, model, prompt)
+    async for event in execute(plan, registry, settings):
         elapsed = round((time.perf_counter() - started) * 1000)
         if event.type == "run.started" and event.provider_request_id:
             request_id = event.provider_request_id
@@ -147,6 +154,8 @@ async def run_case(
             terminal = event.code or "PROVIDER_ERROR"
     passed = [value for value in expected if value.lower() in text.lower()]
     completed = terminal in {"stop", "length", "completed"}
+    adapter = registry.for_plan(plan)
+    diagnostic = adapter.last_diagnostic() if isinstance(adapter, StreamingAdapter) else None
     return {
         "category": category,
         "success": completed,
@@ -160,6 +169,17 @@ async def run_case(
         "finishReason": terminal if completed else None,
         "failureCode": None if completed else terminal,
         "acceptanceChecks": {"passed": len(passed), "total": len(expected)},
+        "diagnostic": (
+            {
+                "httpStatus": diagnostic.http_status,
+                "providerCode": diagnostic.provider_code,
+                "providerType": diagnostic.provider_type,
+                "providerStatus": diagnostic.provider_status,
+                "message": diagnostic.message,
+            }
+            if diagnostic
+            else None
+        ),
     }
 
 
@@ -169,20 +189,24 @@ async def evaluate(provider: Provider, timeout_probe: bool) -> dict[str, object]
     registry = ProviderRegistry(settings)
     health = next(item for item in await registry.health() if item.provider == provider)
     if health.status not in {"enabled", "available", "ready"}:
-        raise RuntimeError(f"{provider} is not ready for an external evaluation: {health.status}")
-    results = [
-        await run_case(registry, settings, provider, model, category, prompt, expected)
-        for category, prompt, expected in CASES
-    ]
+        code = {
+            "disabled": "PROVIDER_DISABLED",
+            "missing_credentials": "PROVIDER_MISSING_CREDENTIALS",
+            "invalid_credentials": "PROVIDER_AUTH_FAILED",
+        }.get(health.status, "PROVIDER_UNAVAILABLE")
+        return report(provider, model, [], None, "BLOCKED", code, None)
+    results: list[dict[str, object]] = []
+    blocked_by: str | None = None
+    for category, prompt, expected in CASES:
+        result = await run_case(registry, settings, provider, model, category, prompt, expected)
+        results.append(result)
+        failure = result["failureCode"]
+        if isinstance(failure, str) and failure in PERMANENT_CONFIGURATION_FAILURES:
+            blocked_by = str(failure)
+            break
     successful = [item for item in results if item["success"]]
-    task_scores: dict[str, float] = {}
-    for category in ("general", "coding", "reasoning", "summarization"):
-        category_results = [item for item in results if item["category"] == category]
-        passed = sum(int(item["acceptanceChecks"]["passed"]) for item in category_results)  # type: ignore[index]
-        total = sum(int(item["acceptanceChecks"]["total"]) for item in category_results)  # type: ignore[index]
-        task_scores[category] = round(100 * passed / total, 2)
     timeout_result: str | None = None
-    if timeout_probe:
+    if timeout_probe and blocked_by is None:
         short_timeout = settings.model_copy(update={"request_timeout_seconds": 0.001})
         probe = await run_case(
             ProviderRegistry(short_timeout),
@@ -194,11 +218,55 @@ async def evaluate(provider: Provider, timeout_probe: bool) -> dict[str, object]
             ("timeout-probe",),
         )
         timeout_result = str(probe["failureCode"] or probe["finishReason"])
+    status: Literal["BLOCKED", "INCOMPLETE", "COMPLETED"] = (
+        "BLOCKED"
+        if blocked_by
+        else "INCOMPLETE"
+        if len(successful) != len(results)
+        else "COMPLETED"
+    )
+    return report(provider, model, results, timeout_result, status, blocked_by, successful)
+
+
+def report(
+    provider: Provider,
+    model: dict[str, Any],
+    results: list[dict[str, object]],
+    timeout_result: str | None,
+    status: Literal["BLOCKED", "INCOMPLETE", "COMPLETED"],
+    blocked_by: str | None,
+    successful: list[dict[str, object]] | None,
+) -> dict[str, object]:
+    """Only completed benchmark runs may yield registry routing evidence."""
+
+    def integer(value: object) -> int:
+        if type(value) is not int:
+            raise ValueError("Evaluation result contains an invalid integer metric")
+        return value
+
+    def acceptance(result: dict[str, object], key: str) -> int:
+        checks = result.get("acceptanceChecks")
+        if not isinstance(checks, dict):
+            raise ValueError("Evaluation result is missing acceptance checks")
+        return integer(checks.get(key))
+
+    task_scores: dict[str, float] | None = None
+    if status == "COMPLETED":
+        task_scores = {}
+        for category in ("general", "coding", "reasoning", "summarization"):
+            category_results = [item for item in results if item["category"] == category]
+            passed = sum(acceptance(item, "passed") for item in category_results)
+            total = sum(acceptance(item, "total") for item in category_results)
+            task_scores[category] = round(100 * passed / total, 2)
+    successful = successful or []
     return {
+        "status": status,
+        "blockedBy": blocked_by,
         "provider": provider,
         "modelKey": model["modelKey"],
         "providerModelId": model["providerModelId"],
-        "requests": len(results) + int(timeout_probe),
+        "requests": len(results) + int(timeout_result is not None),
+        "plannedRequests": len(CASES) + 1,
         "methodology": {
             "taskScore": "passed deterministic acceptance checks / total checks * 100",
             "qualityScore": "unweighted arithmetic mean of the four task scores",
@@ -207,8 +275,10 @@ async def evaluate(provider: Provider, timeout_probe: bool) -> dict[str, object]
         },
         "results": results,
         "taskScores": task_scores,
-        "qualityScore": round(sum(task_scores.values()) / len(task_scores), 2),
-        "typicalLatencyMs": round(median([int(item["totalLatencyMs"]) for item in successful]))
+        "qualityScore": round(sum(task_scores.values()) / len(task_scores), 2)
+        if task_scores
+        else None,
+        "typicalLatencyMs": round(median([integer(item["totalLatencyMs"]) for item in successful]))
         if successful
         else None,
         "timeoutProbe": timeout_result,
@@ -234,6 +304,13 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     args.output.chmod(0o600)
     print(f"Wrote {args.provider} evaluation metrics to {args.output}")
+    if report["status"] == "BLOCKED":
+        first = report["results"][0] if report["results"] else None  # type: ignore[index]
+        diagnostic = first.get("diagnostic") if isinstance(first, dict) else None
+        print(
+            "Evaluation blocked by "
+            f"{report['blockedBy']}; sanitized upstream diagnostic: {json.dumps(diagnostic)}"
+        )
 
 
 if __name__ == "__main__":

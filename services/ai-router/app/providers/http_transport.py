@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import httpx
 
-from app.providers.base import ProviderTransportError
+from app.providers.base import ProviderTransportError, provider_transport_error
 
 
 class HttpTransport:
@@ -21,8 +21,8 @@ class HttpTransport:
                 response.raise_for_status()
                 return cast(dict[str, Any], response.json())
         except httpx.HTTPStatusError as error:
-            raise ProviderTransportError(
-                error.response.status_code, "Provider request failed"
+            raise provider_transport_error(
+                error.response.status_code, error.response.content, headers, body
             ) from error
         except httpx.TimeoutException as error:
             raise TimeoutError("Provider timed out") from error
@@ -59,8 +59,8 @@ class HttpTransport:
                                     raise ValueError("Invalid provider event")
                                 yield value
         except httpx.HTTPStatusError as error:
-            raise ProviderTransportError(
-                error.response.status_code, "Provider request failed"
+            raise provider_transport_error(
+                error.response.status_code, error.response.content, headers, body
             ) from error
         except httpx.TimeoutException as error:
             raise TimeoutError("Provider timed out") from error

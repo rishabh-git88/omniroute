@@ -36,6 +36,7 @@ async def _execute(
             codes = {
                 "disabled": "PROVIDER_DISABLED",
                 "missing_credentials": "PROVIDER_MISSING_CREDENTIALS",
+                "invalid_credentials": "PROVIDER_AUTH_FAILED",
                 "rate_limited": "RATE_LIMITED",
                 "timed_out": "PROVIDER_TIMEOUT",
             }

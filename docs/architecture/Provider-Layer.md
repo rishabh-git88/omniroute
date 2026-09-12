@@ -72,6 +72,11 @@ Provider SDKs/APIs, server-side credentials, [[Model-Registry]] snapshots, cross
 
 Normalize rate limits, invalid requests, timeouts, provider errors, malformed events, and cancellation. Preserve provider request IDs without secrets. A provider fault remains isolated to one model run.
 
+Provider health distinguishes `missing_credentials` (no configured key) from
+`invalid_credentials` (a configured key rejected by upstream). The public API
+emits only normalized failures; redacted HTTP diagnostic details are available
+solely to the guarded local provider-evaluation command.
+
 ## Security considerations
 
 Use environment-specific server-side keys, rotation, spend limits, redacted logs, and provider-specific retention review. Tool calls remain proposals until [[Security|application validation and approval]].
