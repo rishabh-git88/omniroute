@@ -43,7 +43,7 @@ must agree with that deployment.
 
 ## Deployment path
 
-- Current production: Vercel web; Render Docker web services for the API and AI Router; Supabase PostgreSQL Session Pooler; Render Key Value for ephemeral cache state. See [[Render]].
+- Current production: Vercel web; Render Docker web services for the API and AI Router; Supabase PostgreSQL Session Pooler; the workspace's existing Render Key Value instance for ephemeral cache state. See [[Render]].
 - Growth: Vercel/CDN web; AWS ECS/Fargate or equivalent; RDS, managed Redis, S3, and queue.
 - Large scale: multi-region edge plus Kubernetes/mature containers only if justified; replicas, partitioning, regional storage, and disaster recovery.
 

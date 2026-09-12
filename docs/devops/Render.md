@@ -5,9 +5,11 @@
 ## Purpose
 
 Deploy the OmniRoute NestJS API and FastAPI AI Router as separate Render Docker
-web services in Singapore. PostgreSQL remains on Supabase; Render Key Value is
-the ephemeral cache only. The root [render.yaml](../../render.yaml) is the
-source of truth for these Render resources.
+web services in Singapore. PostgreSQL remains on Supabase; an existing Render
+Key Value instance is the ephemeral cache only. Render allows one Free Key Value
+instance per workspace, so the Blueprint deliberately declares no Key Value
+resource. The root [render.yaml](../../render.yaml) is the source of truth for
+the two web services.
 
 ## Architecture
 
@@ -16,7 +18,7 @@ flowchart LR
     Browser --> Vercel[https://oneroute-ai.vercel.app]
     Vercel -->|/v1 rewrite| API[Render: omniroute-api]
     API -->|authenticated provider contract| Router[Render: omniroute-ai-router]
-    API -->|private connection string| Cache[(Render Key Value)]
+    API -->|private connection string| Cache[(Existing Render Key Value)]
     API -->|Supabase Session Pooler| Database[(Supabase PostgreSQL)]
     API --> Google[Google OAuth]
 ```
@@ -25,9 +27,12 @@ The browser only calls `https://oneroute-ai.vercel.app/v1/...`. Vercel forwards
 those requests to the Render API service. The Render API URL is server/build
 configuration and must never be exposed as a `NEXT_PUBLIC_*` value.
 
-`omniroute-cache` allows no public IP addresses, uses `allkeys-lru`, and has
-persistence disabled. The Blueprint declares no Render Postgres resource and no
-migration command; Supabase migrations are already production schema state.
+The existing Key Value instance must remain private, cache-only, and configured
+with the workspace's appropriate eviction policy. OmniRoute uses Redis only for
+ephemeral cache, queue, and real-time coordination state; Supabase PostgreSQL
+remains the persistent system of record. The Blueprint declares no Render
+Postgres resource and no migration command; Supabase migrations are already
+production schema state.
 
 ## Blueprint wiring
 
@@ -37,7 +42,7 @@ its workspace packages.
 
 | Consumer | Variable | Source |
 | --- | --- | --- |
-| API | `REDIS_URL` | `omniroute-cache` private `connectionString` |
+| API | `REDIS_URL` | Manual secret: existing Render Key Value private connection string |
 | API | `AI_ROUTER_URL` | `omniroute-ai-router` `RENDER_EXTERNAL_URL` service reference |
 | API and AI Router | `AI_ROUTER_INTERNAL_TOKEN` | Render-generated API secret, copied to the router |
 | API | `AUTH_SESSION_SECRET` | Render-generated 256-bit secret |
@@ -49,14 +54,17 @@ on its own Render URL for Vercel's rewrite target and for health checks.
 
 ## Render values to enter
 
-The first Blueprint sync prompts only for these API values:
+The Blueprint sync prompts for these API values:
 
 | Variable | Required value |
 | --- | --- |
 | `DATABASE_URL` | Supabase **Session Pooler** URI for production, including Supabase's required TLS query parameter |
 | `GOOGLE_CLIENT_ID` | Production Google OAuth web-client ID |
 | `GOOGLE_CLIENT_SECRET` | Matching production Google OAuth client secret |
+| `REDIS_URL` | Private connection string from the existing Render Key Value instance |
 
+Do not create a second Free Key Value instance. Copy the existing instance's
+internal/private connection string into `REDIS_URL`; never commit or expose it.
 Do not add `AUTH_COOKIE_DOMAIN`. Do not enter provider keys yet; provider
 adapters remain disabled until their credentials and reviewed registry entries
 are ready.
@@ -94,9 +102,10 @@ configured Render `PORT` values.
 1. Push the reviewed Blueprint and application changes.
 2. In Render, select **New > Blueprint**, connect `rishabh-git88/omniroute`,
    select the branch, and use `render.yaml`.
-3. Enter the three prompted values above. Confirm that exactly two web services
-   and one Key Value instance will be created. Do not add Render PostgreSQL or a
-   Prisma pre-deploy command.
+3. Enter the four prompted values above. Confirm that exactly two web services
+   will be created and no Key Value instance is being created. In the existing
+   Render Key Value service, copy its private/internal connection string into
+   `REDIS_URL`. Do not add Render PostgreSQL or a Prisma pre-deploy command.
 4. Copy the assigned `omniroute-api` Render HTTPS URL into Vercel as
    `RENDER_API_ORIGIN`; set `NEXT_PUBLIC_API_URL` to the Vercel origin and
    redeploy Vercel.
@@ -105,9 +114,11 @@ configured Render `PORT` values.
 
 If `/v1` returns a Vercel 404 or 502, verify `RENDER_API_ORIGIN` is an HTTPS
 origin with no path or `/v1` suffix and redeploy Vercel. If API readiness fails,
-verify the Supabase Session Pooler URL and TLS requirements. If API startup fails
-environment validation, make all three public API/web/CORS values exactly
-`https://oneroute-ai.vercel.app` and leave `AUTH_COOKIE_DOMAIN` unset.
+verify the Supabase Session Pooler URL and TLS requirements. If Redis fails to
+connect, replace `REDIS_URL` with the existing Key Value service's private
+connection string. If API startup fails environment validation, make all three
+public API/web/CORS values exactly `https://oneroute-ai.vercel.app` and leave
+`AUTH_COOKIE_DOMAIN` unset.
 
 ## Related notes
 

@@ -53,10 +53,7 @@ services:
       - key: AI_ROUTER_INTERNAL_TOKEN
         generateValue: true
       - key: REDIS_URL
-        fromService:
-          name: omniroute-cache
-          type: keyvalue
-          property: connectionString
+        sync: false
       - key: AI_ROUTER_URL
         fromService:
           name: omniroute-ai-router
@@ -91,11 +88,3 @@ services:
           name: omniroute-api
           type: web
           envVarKey: AI_ROUTER_INTERNAL_TOKEN
-
-  - type: keyvalue
-    name: omniroute-cache
-    region: singapore
-    plan: free
-    ipAllowList: []
-    maxmemoryPolicy: allkeys-lru
-    persistenceMode: off
