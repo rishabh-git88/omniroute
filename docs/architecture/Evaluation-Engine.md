@@ -39,6 +39,15 @@ Begin with database-backed product events and offline analysis. Do not add Kafka
 
 Early evaluation includes branch coherence after switching, fact retention, task success, and tab-position preference bias. Selection data supports recommendations only after controlled validation.
 
+The guarded `services/ai-router/scripts/evaluate_providers.py` calibration tool
+uses the existing `ProviderRegistry` and `execute()` path, never a public HTTP
+endpoint. It requires `PROVIDER_EVAL_CONFIRM=run-real-provider-evaluation`, runs
+one configured provider against twelve non-private deterministic prompts, and
+writes metrics without raw output. Task score is passed acceptance checks divided
+by total checks; quality is the unweighted mean of four category scores; typical
+latency is the median successful total latency. Failed requests are excluded from
+latency statistics and retained as failure codes.
+
 ## Related notes
 
 [[Product-Vision]] · [[Testing]] · [[Security]] · [[ADR-003-AI-Router]]

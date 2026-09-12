@@ -22,6 +22,9 @@ RUN groupadd --system --gid 1001 omniroute \
 
 COPY --from=build /install /usr/local
 COPY --chown=omniroute:omniroute services/ai-router/app ./app
+# Guarded evaluation is a manual administrative command, never an HTTP route.
+COPY --chown=omniroute:omniroute services/ai-router/scripts ./scripts
+COPY --chown=omniroute:omniroute config/model-registry ./config/model-registry
 
 USER omniroute
 EXPOSE 8001

@@ -5,6 +5,7 @@
   "scripts": {
     "build": "uv --cache-dir ../../.uv-cache build --wheel --no-build-isolation --out-dir dist",
     "dev": "uv --cache-dir ../../.uv-cache run uvicorn app.main:app --host 0.0.0.0 --port ${AI_ROUTER_PORT:-8001} --reload",
+    "eval:provider": "uv --cache-dir ../../.uv-cache run python scripts/evaluate_providers.py",
     "lint": "uv --cache-dir ../../.uv-cache run ruff check app tests && uv --cache-dir ../../.uv-cache run ruff format --check app tests",
     "test": "uv --cache-dir ../../.uv-cache run pytest",
     "typecheck": "uv --cache-dir ../../.uv-cache run mypy app tests"

@@ -107,6 +107,23 @@ After adding approved routing metadata in a new registry version, rerun with
 Run a production smoke manually only after Render has the relevant provider key.
 No live provider test runs in CI.
 
+## Guarded provider evaluation
+
+The calibration runner is not an HTTP endpoint and must execute only from a
+trusted AI Router runtime that has the existing server-only credentials. It uses
+the production adapter path and requires explicit confirmation:
+
+```bash
+PROVIDER_EVAL_CONFIRM=run-real-provider-evaluation \
+python scripts/evaluate_providers.py \
+  --provider gemini --timeout-probe --output /tmp/gemini-evaluation.json
+```
+
+Repeat with `groq` and `openrouter`. The report has no raw outputs or keys. Do
+not activate a registry entry until a reviewer has inspected all reports and
+created a successor immutable registry version with the measured task, quality,
+and median-latency fields.
+
 ## Vercel and Google configuration
 
 Vercel Production environment variables:
