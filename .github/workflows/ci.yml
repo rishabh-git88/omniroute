@@ -17,6 +17,7 @@ env:
   PNPM_VERSION: 12.3.4
   PYTHON_VERSION: '3.14'
   NEXT_PUBLIC_API_URL: https://api.ci.invalid
+  RENDER_API_ORIGIN: https://api.ci.invalid
 
 jobs:
   lint:

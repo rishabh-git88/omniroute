@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 import { fileURLToPath } from 'node:url';
 
+// Server-only Render target for the same-origin /v1 proxy.
 function renderApiOrigin(): string {
   const value = process.env.RENDER_API_ORIGIN;
   if (!value) throw new Error('RENDER_API_ORIGIN is required for /v1 rewrites');
