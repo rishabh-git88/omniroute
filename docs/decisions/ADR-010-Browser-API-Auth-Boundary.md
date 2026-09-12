@@ -1,6 +1,6 @@
 # ADR-010: Production Browser, API, and Authentication Boundary
 
-- Status: Accepted
+- Status: Superseded by [[ADR-015-Vercel-Same-Origin-API-Proxy]]
 - Date: 2026-09-10
 - Scope: Release Milestone 1, as explicitly authorized by the user.
 

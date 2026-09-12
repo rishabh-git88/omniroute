@@ -25,7 +25,7 @@ export class AuthCookieService {
   ): void {
     for (const [key, name] of Object.entries(OAUTH_COOKIE_NAMES)) {
       reply.setCookie(name, values[key as keyof typeof values], {
-        ...this.baseOptions,
+        ...this.oauthOptions,
         maxAge: 600,
         path: OAUTH_COOKIE_PATH,
       });
@@ -35,7 +35,7 @@ export class AuthCookieService {
   public clearOAuthCookies(reply: FastifyReply): void {
     for (const name of Object.values(OAUTH_COOKIE_NAMES)) {
       reply.clearCookie(name, {
-        ...this.baseOptions,
+        ...this.oauthOptions,
         path: OAUTH_COOKIE_PATH,
       });
     }
@@ -43,7 +43,7 @@ export class AuthCookieService {
 
   public setSession(reply: FastifyReply, token: string): void {
     reply.setCookie(AUTH_SESSION_COOKIE, token, {
-      ...this.baseOptions,
+      ...this.sessionOptions,
       ...this.sessionDomain,
       maxAge: this.environment.AUTH_SESSION_TTL_HOURS * 60 * 60,
       path: '/',
@@ -53,13 +53,21 @@ export class AuthCookieService {
 
   public clearSession(reply: FastifyReply): void {
     reply.clearCookie(AUTH_SESSION_COOKIE, {
-      ...this.baseOptions,
+      ...this.sessionOptions,
       ...this.sessionDomain,
       path: '/',
     });
   }
 
-  private get baseOptions() {
+  private get oauthOptions() {
+    return {
+      httpOnly: true,
+      sameSite: 'lax' as const,
+      secure: this.environment.NODE_ENV === 'production',
+    };
+  }
+
+  private get sessionOptions() {
     return {
       httpOnly: true,
       sameSite: 'lax' as const,

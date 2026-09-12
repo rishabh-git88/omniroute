@@ -41,6 +41,15 @@ describe('web environment', () => {
     ).toBe('https://api.example.com');
   });
 
+  it('accepts the Vercel same-origin production URL without adding /v1', () => {
+    expect(
+      parseWebEnvironment({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_API_URL: 'https://oneroute-ai.vercel.app',
+      }).NEXT_PUBLIC_API_URL,
+    ).toBe('https://oneroute-ai.vercel.app');
+  });
+
   it('honors an explicit development origin and rejects invalid values', () => {
     expect(
       parseWebEnvironment({

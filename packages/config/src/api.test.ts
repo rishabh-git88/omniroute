@@ -64,21 +64,31 @@ describe('parseAuthEnvironment', () => {
     ).toThrow(EnvironmentValidationError);
   });
 
-  const production = {
+  const sameOriginProduction = {
     ...validEnvironment,
     NODE_ENV: 'production',
-    API_PUBLIC_URL: 'https://api.example.com',
-    WEB_APP_URL: 'https://app.example.com',
-    AUTH_COOKIE_DOMAIN: '.example.com',
+    API_PUBLIC_URL: 'https://oneroute-ai.vercel.app',
+    WEB_APP_URL: 'https://oneroute-ai.vercel.app',
   };
 
-  it('accepts and normalizes configured sibling domains', () => {
-    expect(parseAuthEnvironment(production).AUTH_COOKIE_DOMAIN).toBe(
-      'example.com',
-    );
+  it('accepts the Vercel same-origin proxy deployment with host-only cookies', () => {
+    expect(
+      parseAuthEnvironment(sameOriginProduction).AUTH_COOKIE_DOMAIN,
+    ).toBeUndefined();
+  });
+
+  it('accepts and normalizes an optional custom cookie domain', () => {
     expect(
       parseAuthEnvironment({
-        ...production,
+        ...sameOriginProduction,
+        API_PUBLIC_URL: 'https://api.example.com',
+        WEB_APP_URL: 'https://app.example.com',
+        AUTH_COOKIE_DOMAIN: '.example.com',
+      }).AUTH_COOKIE_DOMAIN,
+    ).toBe('example.com');
+    expect(
+      parseAuthEnvironment({
+        ...sameOriginProduction,
         API_PUBLIC_URL: 'https://api.example.co.uk',
         WEB_APP_URL: 'https://app.example.co.uk',
         AUTH_COOKIE_DOMAIN: 'example.co.uk',
@@ -87,17 +97,21 @@ describe('parseAuthEnvironment', () => {
   });
 
   it.each([
-    { AUTH_COOKIE_DOMAIN: '' },
     { AUTH_COOKIE_DOMAIN: 'com' },
     { AUTH_COOKIE_DOMAIN: 'unrelated.com' },
     { AUTH_COOKIE_DOMAIN: 'https://example.com' },
-    { WEB_APP_URL: 'https://project.vercel.app' },
+    { WEB_APP_URL: 'http://oneroute-ai.vercel.app' },
     { API_PUBLIC_URL: 'https://api.example.com/v1' },
     { WEB_APP_URL: 'https://app.example.com?private=value' },
     { API_PUBLIC_URL: 'https://localhost' },
-  ])('rejects invalid production cookie topology %j', (override) => {
-    expect(() => parseAuthEnvironment({ ...production, ...override })).toThrow(
-      EnvironmentValidationError,
-    );
-  });
+    { API_PUBLIC_URL: 'http://oneroute-ai.vercel.app' },
+    { API_PUBLIC_URL: 'https://other.example.com' },
+  ])(
+    'rejects invalid production authentication configuration %j',
+    (override) => {
+      expect(() =>
+        parseAuthEnvironment({ ...sameOriginProduction, ...override }),
+      ).toThrow(EnvironmentValidationError);
+    },
+  );
 });

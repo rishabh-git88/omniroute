@@ -24,7 +24,9 @@ provider can be introduced without changing session or authorization code.
 ## Session and request security
 
 - The browser receives a random 256-bit opaque token in an HttpOnly, SameSite=Lax
-  cookie. `Secure` is required automatically in production.
+  cookie. `Secure` is required automatically in production. Host-only cookies
+  support the Vercel same-origin proxy deployment; an owned sibling-domain
+  deployment can opt into a validated `AUTH_COOKIE_DOMAIN`.
 - PostgreSQL stores only an HMAC-SHA-256 token hash. Sessions have an absolute
   24-hour default lifetime, rotate after 15 minutes of activity, and can be
   revoked immediately.
@@ -52,27 +54,30 @@ Start PostgreSQL, then run `pnpm dev`. Open `http://localhost:3000/login`.
 ## Related notes
 
 [[Frontend]] · [[Backend]] · [[Security]] · [[PostgreSQL-Schema]] ·
-[[ADR-006-MVP-Authentication]] · [[ADR-010-Browser-API-Auth-Boundary]]
+[[ADR-006-MVP-Authentication]] · [[ADR-010-Browser-API-Auth-Boundary]] ·
+[[ADR-015-Vercel-Same-Origin-API-Proxy]]
 
-## Production sibling-domain configuration
+## Production deployment configurations
 
-Use an owned shared registrable domain with the following mapping. Angle-bracket
-placeholders describe configuration and must be replaced; no domain is built in.
+The current production deployment proxies browser `/v1` traffic through Vercel.
+It does not expose the Render API origin to the browser.
 
 | Setting | Value |
 | --- | --- |
-| Vercel build `NEXT_PUBLIC_API_URL` | `https://api.<domain>` |
-| NestJS `API_PUBLIC_URL` | `https://api.<domain>` |
-| NestJS `WEB_APP_URL` and `CORS_ORIGIN` | `https://app.<domain>` |
-| NestJS `AUTH_COOKIE_DOMAIN` | `<domain>`; a leading dot is normalized away |
-| Google authorized callback | `https://api.<domain>/v1/auth/google/callback` |
+| Vercel `NEXT_PUBLIC_API_URL` | `https://oneroute-ai.vercel.app` |
+| Vercel `RENDER_API_ORIGIN` | Render API HTTPS origin, no `/v1`; server/build only |
+| NestJS `API_PUBLIC_URL`, `WEB_APP_URL`, and `CORS_ORIGIN` | `https://oneroute-ai.vercel.app` |
+| NestJS `AUTH_COOKIE_DOMAIN` | unset |
+| Google authorized callback | `https://oneroute-ai.vercel.app/v1/auth/google/callback` |
 
-Production startup rejects missing/mismatched cookie domains and sibling hosts,
-non-HTTPS/local origins, and origins with paths, queries, or credentials. Session
-cookies span the configured domain. OAuth state/nonce/PKCE/return-path cookies
-remain API-host-only, expire after ten minutes, and use the callback path. Both
+Production accepts this exact same-origin pattern with host-only session cookies,
+or an owned sibling-domain pattern using `https://app.<domain>`,
+`https://api.<domain>`, and `AUTH_COOKIE_DOMAIN=<domain>`. It rejects mixed
+origins without a cookie domain, non-HTTPS/local origins, and origins with paths,
+queries, or credentials. OAuth state/nonce/PKCE/return-path cookies remain
+host-only, expire after ten minutes, and use the callback path. Both cookie types
 use HttpOnly, Secure, and SameSite=Lax in production; clear operations preserve
-the same scope. Subdomains receiving the shared session cookie must be trusted.
+the same scope.
 
 The browser includes credentials and sends the existing session-bound CSRF token
 on mutations. API CORS permits content-type, x-csrf-token, idempotency-key, and
@@ -87,5 +92,5 @@ callback; normal request logs omit query strings and credential headers.
 
 ## Open Questions
 
-- Which owned parent domain and Google OAuth client will be used for live
-  acceptance? The sibling-domain topology is settled by ADR-010.
+- When an owned parent domain is available, should production move from the
+  Vercel proxy to the optional sibling-domain deployment described in ADR-015?

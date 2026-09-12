@@ -97,15 +97,23 @@ const authEnvironmentSchema = z
         });
       }
     }
+    if (!domain && environment.API_PUBLIC_URL !== environment.WEB_APP_URL) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'production without a cookie domain requires the same web and API origin',
+        path: ['AUTH_COOKIE_DOMAIN'],
+      });
+    }
     if (
-      !domain ||
-      new URL(environment.WEB_APP_URL).hostname !== `app.${domain}` ||
-      new URL(environment.API_PUBLIC_URL).hostname !== `api.${domain}`
+      domain &&
+      (new URL(environment.WEB_APP_URL).hostname !== `app.${domain}` ||
+        new URL(environment.API_PUBLIC_URL).hostname !== `api.${domain}`)
     ) {
       context.addIssue({
         code: 'custom',
         message:
-          'production requires app/API sibling hosts and their explicit shared cookie domain',
+          'production cookie-domain deployments require app/API sibling hosts',
         path: ['AUTH_COOKIE_DOMAIN'],
       });
     }

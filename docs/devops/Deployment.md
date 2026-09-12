@@ -29,10 +29,10 @@ flowchart TB
 
 For the fixed public-release architecture, use [[RELEASE-SCOPE]]; the managed-host
 alternatives below are historical planning. Web/API auth configuration follows
-[[ADR-010-Browser-API-Auth-Boundary]]: Vercel serves `app.<domain>`, the API serves
-`api.<domain>`, and the session cookie uses the owned shared domain. Configure the
-public API origin at web build time and rebuild for a different environment.
-Google callbacks and API runtime origins must agree with that deployment.
+[[ADR-015-Vercel-Same-Origin-API-Proxy]]: Vercel serves the public application and
+proxies `/v1` to Render. Configure the public API origin at web build time and
+rebuild for a different environment. Google callbacks and API runtime origins
+must agree with that deployment.
 
 | Environment | Purpose | Data rule |
 |---|---|---|
@@ -77,6 +77,6 @@ requires a new ADR.
 
 ## Open Questions
 
-- Which owned parent domain will provide the required Vercel `app` and Render API `api` sibling hosts?
+- When should an owned sibling-domain deployment replace the Vercel proxy?
 - What regions, recovery objectives, backup schedule, and data residency constraints apply?
 - Does the chosen API host reliably support long-lived SSE and graceful deploy draining?

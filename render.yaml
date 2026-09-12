@@ -43,16 +43,11 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: WEB_APP_URL
-        sync: false
+        value: https://oneroute-ai.vercel.app
       - key: CORS_ORIGIN
-        sync: false
-      # Production authentication requires api.<domain> and app.<domain> on an
-      # owned shared parent domain, so these cannot use Render's onrender.com
-      # external URL. See docs/devops/Render.md.
+        value: https://oneroute-ai.vercel.app
       - key: API_PUBLIC_URL
-        sync: false
-      - key: AUTH_COOKIE_DOMAIN
-        sync: false
+        value: https://oneroute-ai.vercel.app
       - key: AUTH_SESSION_SECRET
         generateValue: true
       - key: AI_ROUTER_INTERNAL_TOKEN

@@ -14,12 +14,11 @@ import { StreamEventHub } from './conversations/stream-event-hub.js';
 import { AuthCookieService } from './identity/auth-cookie.service.js';
 import type { AuthenticatedRequest } from './identity/auth.types.js';
 
-const origin = 'https://app.example.com';
+const origin = 'https://oneroute-ai.vercel.app';
 const environment = parseAuthEnvironment({
   NODE_ENV: 'production',
   WEB_APP_URL: origin,
-  API_PUBLIC_URL: 'https://api.example.com',
-  AUTH_COOKIE_DOMAIN: '.example.com',
+  API_PUBLIC_URL: origin,
   AUTH_SESSION_SECRET: 'test-only-secret-at-least-32-characters',
   GOOGLE_CLIENT_ID: 'test-client',
   GOOGLE_CLIENT_SECRET: 'test-secret',
@@ -156,7 +155,7 @@ describe('real Fastify browser boundary', () => {
     expect(response.body).toContain('test answer');
   });
   it.each(['/cookie-test', '/clear-cookie-test'])(
-    'sets/clears session cookies on the shared domain and OAuth cookies only on the API host: %s',
+    'sets/clears host-only same-origin session cookies and callback-scoped OAuth cookies: %s',
     async (url) => {
       const response = await app.inject({ url });
       const headers = response.headers['set-cookie'] as string[];
@@ -164,16 +163,19 @@ describe('real Fastify browser boundary', () => {
       const session = headers.find((value) =>
         value.startsWith('omniroute_session='),
       )!;
-      expect(session).toContain('Domain=example.com');
+      expect(session).not.toContain('Domain=');
       expect(session).toContain('Path=/;');
-      for (const value of headers) {
+      expect(session).toContain('HttpOnly');
+      expect(session).toContain('Secure');
+      expect(session).toContain('SameSite=Lax');
+      for (const value of headers.filter(
+        (value) => !value.startsWith('omniroute_session='),
+      )) {
         expect(value).toContain('HttpOnly');
         expect(value).toContain('Secure');
         expect(value).toContain('SameSite=Lax');
-        if (!value.startsWith('omniroute_session=')) {
-          expect(value).not.toContain('Domain=');
-          expect(value).toContain('Path=/v1/auth/google/callback');
-        }
+        expect(value).not.toContain('Domain=');
+        expect(value).toContain('Path=/v1/auth/google/callback');
       }
     },
   );
