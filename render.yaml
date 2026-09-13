@@ -42,7 +42,6 @@ services:
         sync: false
       - key: SUPABASE_STORAGE_BUCKET
         sync: false
-        sync: false
       - key: EMBEDDING_PROVIDER
         value: disabled
       - key: AUTH_SESSION_TTL_HOURS
