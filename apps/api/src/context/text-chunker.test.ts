@@ -17,4 +17,11 @@ describe('workspace memory primitives', () => {
       embeddings.embed('database migration'),
     );
   });
+  it('is deterministic and retains provenance offsets without flattening Markdown', () => {
+    const source = '# Heading\\n\\n' + 'reference '.repeat(500);
+    const first = chunkText(source);
+    expect(chunkText(source)).toEqual(first);
+    expect(first[0]).toMatchObject({ charStart: 0 });
+    expect(first.every((chunk) => chunk.charEnd > chunk.charStart)).toBe(true);
+  });
 });

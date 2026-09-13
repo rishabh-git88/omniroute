@@ -4,6 +4,7 @@ import type { WorkspaceFile } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 export interface CreateWorkspaceFileInput {
+  id: string;
   workspaceId: string;
   objectKey: string;
   originalName: string;
@@ -19,6 +20,7 @@ export class WorkspaceFileRepository {
   public create(input: CreateWorkspaceFileInput): Promise<WorkspaceFile> {
     return this.database.client.workspaceFile.create({
       data: {
+        id: input.id,
         workspaceId: input.workspaceId,
         objectKey: input.objectKey,
         originalName: input.originalName,
@@ -28,6 +30,13 @@ export class WorkspaceFileRepository {
           ? {}
           : { checksumSha256: input.checksumSha256 }),
       },
+    });
+  }
+
+  public list(workspaceId: string): Promise<WorkspaceFile[]> {
+    return this.database.client.workspaceFile.findMany({
+      where: { workspaceId, deletedAt: null },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
     });
   }
 

@@ -77,8 +77,19 @@ alternatives. The executor reloads the durable payload before calling the mock.
 Semantic retrieval falls back to scoped lexical search, then a recorded degraded
 result, with bounded database queries and deterministic tie-breaking. See
 [[ADR-012-Frozen-Canonical-Context]] for the budget, provenance and compatibility
-contract. Local deterministic embeddings remain a development implementation;
-this work does not connect real providers or implement S3/PDF ingestion.
+contract. Workspace file ingestion accepts bounded TXT, Markdown, and
+text-layer PDF sources. Original bytes use opaque private object keys;
+PostgreSQL retains metadata, processing state, chunk/embedding provenance, and
+the canonical snapshot payload. A file is retrievable only when READY; deletion
+immediately removes chunks/vectors from future retrieval while existing frozen
+snapshots remain historical evidence. Retrieved text is structurally separate
+untrusted reference material. Local deterministic embeddings remain
+development/test-only and production fails closed until an approved embedding
+provider is configured.
+
+Stale processing is never retried blindly at API startup. A guarded,
+bounded operator command marks abandoned PROCESSING rows as
+FILE_PROCESSING_INTERRUPTED; the user can then explicitly retry the file.
 
 ## Related notes
 

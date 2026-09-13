@@ -23,6 +23,8 @@ api=$(docker run -d --network none \
   -e AUTH_SESSION_SECRET=synthetic-container-test-secret-32-characters \
   -e GOOGLE_CLIENT_ID=synthetic-client -e GOOGLE_CLIENT_SECRET=synthetic-secret \
   -e DATABASE_URL=postgresql://unused:unused@127.0.0.1:1/unavailable \
+  -e FILES_STORAGE_DRIVER=s3 -e FILES_S3_BUCKET=synthetic-private-files \
+  -e FILES_S3_REGION=ap-southeast-1 -e EMBEDDING_PROVIDER=disabled \
   -e OTEL_SDK_DISABLED=true omniroute-api:verify)
 containers+=("$api")
 web=$(docker run -d --network none omniroute-web:verify)

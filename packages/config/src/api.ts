@@ -38,6 +38,45 @@ const apiEnvironmentSchema = z.object({
       'postgresql://omniroute:change-me-local-only@localhost:5432/omniroute',
     ),
   DAILY_FREE_CREDITS: z.string().regex(/^\d+$/).default('1000'),
+  // File source objects and embeddings are server-only. Deterministic
+  // embeddings are deliberately limited to non-production environments.
+  EMBEDDING_PROVIDER: z
+    .enum(['deterministic', 'disabled'])
+    .default('deterministic'),
+  FILES_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(50_000_000)
+    .default(5_000_000),
+  FILES_MAX_CHUNKS: z.coerce.number().int().positive().max(10_000).default(256),
+  FILES_MAX_EXTRACTED_TEXT_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(50_000_000)
+    .default(10_000_000),
+  FILES_MAX_PDF_PAGES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(10_000)
+    .default(100),
+  FILES_PROCESSING_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(300_000)
+    .default(30_000),
+  FILES_STALE_PROCESSING_MS: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .max(86_400_000)
+    .default(15 * 60_000),
+  FILES_STORAGE_DRIVER: z.enum(['memory', 's3']).default('memory'),
+  FILES_S3_BUCKET: z.string().trim().min(3).optional(),
+  FILES_S3_REGION: z.string().trim().min(1).optional(),
   PLATFORM_CREDITS_PER_USD: z.string().regex(/^\d+$/).default('1000000'),
   NODE_ENV: environmentSchema.default('development'),
   LOG_LEVEL: z
@@ -166,6 +205,17 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
       'AI_ROUTER_INTERNAL_TOKEN',
       'AI_ROUTER_URL',
     ]);
+  if (result.data.NODE_ENV === 'production') {
+    if (result.data.FILES_STORAGE_DRIVER !== 's3')
+      throw new EnvironmentValidationError(['FILES_STORAGE_DRIVER']);
+    if (!result.data.FILES_S3_BUCKET || !result.data.FILES_S3_REGION)
+      throw new EnvironmentValidationError([
+        'FILES_S3_BUCKET',
+        'FILES_S3_REGION',
+      ]);
+    if (result.data.EMBEDDING_PROVIDER !== 'disabled')
+      throw new EnvironmentValidationError(['EMBEDDING_PROVIDER']);
+  }
   return result.data;
 }
 

@@ -128,6 +128,7 @@ describe('core PostgreSQL domain constraints', () => {
         mime: 'text/plain',
         objectKey: `test/${crypto.randomUUID()}`,
         originalName: 'notes.txt',
+        processingStatus: 'READY',
         size: BigInt(100),
         workspaceId: workspace.id,
       },

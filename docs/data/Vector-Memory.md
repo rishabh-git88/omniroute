@@ -36,13 +36,16 @@ Start with exact search at low volume; add pgvector approximate indexes only aft
 
 ## Implementation notes
 
-The MVP enables bounded workspace-file retrieval through pgvector. Text files
-are chunked at roughly 1,200 characters with overlap, embedded by the local
-development embedding adapter, and ranked with cosine distance after workspace
-and soft-delete filters. A partial HNSW index applies only to the fixed
-64-dimensional MVP vectors; lexical GIN indexing supports future hybrid
-retrieval. The Context Builder decides whether the top three chunks fit the
-context budget.
+The MVP enables bounded workspace-file retrieval through pgvector. TXT,
+Markdown, and text-layer PDF sources are normalized, deterministically chunked
+at roughly 1,200 characters with overlap, and retain offsets plus extraction,
+chunking, and embedding provenance. Queries enforce workspace, soft-delete,
+READY processing status, embedding model/version, dimension, and bounded top-K
+before cosine ranking. A partial HNSW index applies only to fixed
+64-dimensional development vectors; lexical GIN supports safe degradation.
+Retrieved text is untrusted data and never replaces trusted system instructions.
+Snapshots retain exact content/provenance, so later source changes cannot alter
+a frozen execution.
 
 ## Related notes
 

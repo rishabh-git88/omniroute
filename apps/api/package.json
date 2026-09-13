@@ -14,6 +14,7 @@
     "db:seed:registry": "tsx scripts/seed-registry.ts",
     "db:manage:registry": "tsx scripts/manage-registry.ts",
     "credits:reconcile": "tsx scripts/reconcile-credits.ts",
+    "files:recover": "tsx scripts/recover-file-processing.ts",
     "dev": "nest start --watch",
     "lint": "eslint src scripts prisma/*.ts prisma*.config.ts vitest*.config.ts --ignore-pattern 'generated/**' --config ../../eslint.config.mjs",
     "start": "node dist/main.js",
@@ -22,6 +23,7 @@
     "typecheck": "prisma generate --config prisma-generate.config.ts && tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tools.json --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
     "@fastify/cookie": "11.1.2",
     "@nestjs/common": "12.0.1",
     "@nestjs/core": "12.0.1",
@@ -36,6 +38,7 @@
     "dotenv": "17.4.2",
     "fastify": "5.12.1",
     "jose": "6.2.12",
+    "pdfjs-dist": "^6.3.289",
     "pg": "8.16.3",
     "reflect-metadata": "0.2.2",
     "rxjs": "^7.8.2"

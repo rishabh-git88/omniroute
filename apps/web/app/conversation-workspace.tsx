@@ -89,6 +89,14 @@ type Conversation = {
 type Usage = {
   wallet: { availableCredits: string; reservedCredits: string };
 };
+type WorkspaceFile = {
+  id: string;
+  mime: string;
+  originalName: string;
+  processingErrorCode: string | null;
+  processingStatus: 'PENDING' | 'PROCESSING' | 'READY' | 'FAILED' | 'DELETED';
+  size: string;
+};
 
 interface PendingRun {
   content: string;
@@ -196,7 +204,7 @@ export function ConversationWorkspace({
     useState<RoutePreference>('smart');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<WorkspaceFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [darkTheme, setDarkTheme] = useState(true);
   const [newConversationMode, setNewConversationMode] = useState<
@@ -226,6 +234,9 @@ export function ConversationWorkspace({
       available.some((model) => model.modelKey === current) ? current : '',
     );
   }, []);
+  const loadFiles = useCallback(async () => {
+    setUploadedFiles(await api<WorkspaceFile[]>('/files'));
+  }, []);
 
   useEffect(() => {
     if (auth.status !== 'authenticated') return;
@@ -236,6 +247,13 @@ export function ConversationWorkspace({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [auth.status, refreshWorkspace]);
+  useEffect(() => {
+    if (auth.status !== 'authenticated') return;
+    const timer = window.setTimeout(() => {
+      void loadFiles().catch(() => setError('Unable to load workspace files.'));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [auth.status, loadFiles]);
 
   useEffect(() => {
     if (auth.status === 'authenticated' && initialConversationId) {
@@ -662,26 +680,48 @@ export function ConversationWorkspace({
       const file = event.target.files?.[0];
       event.target.value = '';
       if (!file || auth.status !== 'authenticated') return;
-      if (!file.type.startsWith('text/') || file.size > 2_000_000) {
-        setError('Upload a text file smaller than 2 MB.');
+      const extension = file.name.split('.').at(-1)?.toLowerCase();
+      const mime =
+        file.type ||
+        (extension === 'pdf'
+          ? 'application/pdf'
+          : extension === 'md' || extension === 'markdown'
+            ? 'text/markdown'
+            : 'text/plain');
+      if (
+        !['txt', 'md', 'markdown', 'pdf'].includes(extension ?? '') ||
+        file.size > 5_000_000
+      ) {
+        setError('Upload a TXT, Markdown, or text PDF smaller than 5 MB.');
         return;
       }
       setUploading(true);
       setError(null);
       try {
-        await api(
+        const dataBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error('Unable to read that file.'));
+          reader.onload = () => {
+            const result = reader.result;
+            if (typeof result !== 'string')
+              reject(new Error('Unable to read that file.'));
+            else resolve(result.split(',')[1] ?? '');
+          };
+          reader.readAsDataURL(file);
+        });
+        await api<WorkspaceFile>(
           '/files',
           {
             body: JSON.stringify({
-              content: await file.text(),
-              mime: file.type,
+              dataBase64,
+              mime,
               originalName: file.name,
             }),
             method: 'POST',
           },
           auth.session.csrfToken,
         );
-        setUploadedFiles((current) => [...current, file.name]);
+        await loadFiles();
       } catch (uploadError) {
         setError(
           uploadError instanceof Error
@@ -692,7 +732,47 @@ export function ConversationWorkspace({
         setUploading(false);
       }
     },
-    [auth],
+    [auth, loadFiles],
+  );
+  const retryFile = useCallback(
+    async (fileId: string) => {
+      if (auth.status !== 'authenticated') return;
+      try {
+        await api(
+          '/files/' + fileId + '/retry',
+          { method: 'POST' },
+          auth.session.csrfToken,
+        );
+        await loadFiles();
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Unable to retry that file.',
+        );
+      }
+    },
+    [auth, loadFiles],
+  );
+  const deleteFile = useCallback(
+    async (fileId: string) => {
+      if (auth.status !== 'authenticated') return;
+      try {
+        await api(
+          '/files/' + fileId,
+          { method: 'DELETE' },
+          auth.session.csrfToken,
+        );
+        await loadFiles();
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : 'Unable to delete that file.',
+        );
+      }
+    },
+    [auth, loadFiles],
   );
 
   const rename = useCallback(async () => {
@@ -1092,8 +1172,24 @@ export function ConversationWorkspace({
           ) : null}
           {uploadedFiles.length ? (
             <div className="file-chips">
-              {uploadedFiles.map((name) => (
-                <span key={name}>⌁ {name}</span>
+              {uploadedFiles.map((file) => (
+                <span key={file.id}>
+                  ⌁ {file.originalName} · {file.processingStatus.toLowerCase()}
+                  {file.processingStatus === 'FAILED' ? (
+                    <button
+                      onClick={() => void retryFile(file.id)}
+                      type="button"
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => void deleteFile(file.id)}
+                    type="button"
+                  >
+                    Remove
+                  </button>
+                </span>
               ))}
             </div>
           ) : null}
@@ -1170,7 +1266,7 @@ export function ConversationWorkspace({
             <div className="composer-footer">
               <div className="composer-tools">
                 <input
-                  accept="text/*,.txt,.md,.csv,.json"
+                  accept="text/plain,text/markdown,application/pdf,.txt,.md,.markdown,.pdf"
                   className="file-input"
                   onChange={(event) => void uploadFile(event)}
                   ref={fileInput}
@@ -1180,7 +1276,7 @@ export function ConversationWorkspace({
                   className="icon-button"
                   disabled={uploading}
                   onClick={() => fileInput.current?.click()}
-                  title="Attach a text file"
+                  title="Attach a TXT, Markdown, or text PDF"
                   type="button"
                 >
                   {uploading ? '…' : '＋'}

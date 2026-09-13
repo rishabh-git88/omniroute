@@ -13,6 +13,9 @@ export const EMBEDDING_MODEL_VERSION = 'v1';
  */
 @Injectable()
 export class DeterministicEmbeddingService {
+  public readonly dimensions = EMBEDDING_DIMENSIONS;
+  public readonly model = EMBEDDING_MODEL;
+  public readonly version = EMBEDDING_MODEL_VERSION;
   public embed(content: string): number[] {
     const vector = Array.from({ length: EMBEDDING_DIMENSIONS }, () => 0);
     for (const token of content

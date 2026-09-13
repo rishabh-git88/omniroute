@@ -167,6 +167,10 @@ describe('authenticated router client', () => {
   );
   it('disables mock execution in production and requires internal configuration for real providers', () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('FILES_STORAGE_DRIVER', 's3');
+    vi.stubEnv('FILES_S3_BUCKET', 'test-private-file-bucket');
+    vi.stubEnv('FILES_S3_REGION', 'ap-southeast-1');
+    vi.stubEnv('EMBEDDING_PROVIDER', 'disabled');
     vi.stubEnv('AI_EXECUTION_PROVIDER', undefined);
     expect(executionProvider()).toBeUndefined();
     vi.stubEnv('AI_EXECUTION_PROVIDER', 'mock');

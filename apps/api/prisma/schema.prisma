@@ -70,6 +70,7 @@ enum FileProcessingStatus {
   PROCESSING
   READY
   FAILED
+  DELETED
 }
 
 enum MemoryKind {
@@ -484,6 +485,13 @@ model WorkspaceFile {
   checksumSha256   String?              @map("checksum_sha256")
   scanStatus       FileScanStatus       @default(PENDING) @map("scan_status")
   processingStatus FileProcessingStatus @default(PENDING) @map("processing_status")
+  processingErrorCode String?           @map("processing_error_code")
+  processingStartedAt DateTime?         @map("processing_started_at") @db.Timestamptz(6)
+  processedAt      DateTime?            @map("processed_at") @db.Timestamptz(6)
+  extractorVersion String?              @map("extractor_version")
+  chunkerVersion   String?              @map("chunker_version")
+  embeddingModel   String?              @map("embedding_model")
+  embeddingVersion String?              @map("embedding_version")
   createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   deletedAt        DateTime?            @map("deleted_at") @db.Timestamptz(6)
   workspace        Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -528,6 +536,11 @@ model FileChunk {
   chunkIndex Int           @map("chunk_index")
   content    String
   tokenCount Int?          @map("token_count")
+  charStart  Int?          @map("char_start")
+  charEnd    Int?          @map("char_end")
+  pageStart  Int?          @map("page_start")
+  pageEnd    Int?          @map("page_end")
+  chunkerVersion String?   @map("chunker_version")
   createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   file       WorkspaceFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
   embeddings Embedding[]

@@ -14,7 +14,8 @@
 - Text, files, a capability registry, and basic image-aware routing.
 - Platform credits, reservations, usage ledger, quotas, and provider fallback controls.
 - REST commands, multiplexed SSE, reconnect support, per-run cancellation, and partial failure UX.
-- PostgreSQL, Redis, object storage, observability, Docker, CI/CD, and managed deployment.
+- PostgreSQL, pgvector retrieval for TXT/Markdown/text-layer PDF workspace files,
+  private object storage, observability, Docker, CI/CD, and managed deployment.
 
 ## Explicitly later
 
@@ -23,7 +24,8 @@
 - An ML-trained router or personalized Auto Pick.
 - Every provider and every provider-native tool.
 - Kubernetes, Kafka, service mesh, event sourcing, separate vector database, or multi-region active-active.
-- BYOK/account connections, comparison summaries, team workspaces, RAG, reusable agents, and tool packs until evidence supports them.
+- BYOK/account connections, comparison summaries, team workspaces, OCR, office
+  document ingestion, reusable agents, and tool packs until evidence supports them.
 
 ## MVP exit criteria
 

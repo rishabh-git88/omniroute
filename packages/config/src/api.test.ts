@@ -32,6 +32,23 @@ describe('parseApiEnvironment', () => {
       expect(String(error)).not.toContain('sensitive');
     }
   });
+  it('fails closed for production file storage and unapproved embeddings', () => {
+    const base = {
+      NODE_ENV: 'production',
+      AI_EXECUTION_PROVIDER: 'disabled',
+      FILES_STORAGE_DRIVER: 's3',
+      FILES_S3_BUCKET: 'private-omniroute-files',
+      FILES_S3_REGION: 'ap-southeast-1',
+      EMBEDDING_PROVIDER: 'disabled',
+    };
+    expect(parseApiEnvironment(base).FILES_STORAGE_DRIVER).toBe('s3');
+    expect(() =>
+      parseApiEnvironment({ ...base, FILES_STORAGE_DRIVER: 'memory' }),
+    ).toThrow('FILES_STORAGE_DRIVER');
+    expect(() =>
+      parseApiEnvironment({ ...base, EMBEDDING_PROVIDER: 'deterministic' }),
+    ).toThrow('EMBEDDING_PROVIDER');
+  });
 });
 
 describe('parseAuthEnvironment', () => {

@@ -5,9 +5,14 @@ import type { ApiEnvironment, AuthEnvironment } from '@omniroute/config/api';
 import fastifyCookie from '@fastify/cookie';
 
 export function httpServerOptions(
-  environment: Pick<ApiEnvironment, 'LOG_LEVEL'>,
+  environment: Pick<ApiEnvironment, 'LOG_LEVEL'> &
+    Partial<Pick<ApiEnvironment, 'FILES_MAX_BYTES'>>,
 ) {
   return {
+    // JSON base64 uploads are bounded by the same authoritative source-byte
+    // limit plus encoding overhead. The file service still validates bytes.
+    bodyLimit:
+      Math.ceil((environment.FILES_MAX_BYTES ?? 5_000_000) * 1.37) + 16_384,
     genReqId: (request: Pick<IncomingMessage, 'headers'>) => {
       const supplied = request.headers['x-request-id'];
       return typeof supplied === 'string' &&
