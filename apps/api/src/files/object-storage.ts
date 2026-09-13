@@ -1,12 +1,6 @@
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
 import { Injectable } from '@nestjs/common';
 import { parseApiEnvironment } from '@omniroute/config/api';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export interface StoredObject {
   body: Buffer;
@@ -47,60 +41,76 @@ export class InMemoryObjectStorage implements ObjectStorage {
   }
 }
 
-/** Private buckets only: this adapter never creates or returns public URLs. */
-export class S3ObjectStorage implements ObjectStorage {
-  private readonly client: S3Client;
+/**
+ * Server-only native Supabase Storage adapter. It intentionally exposes no
+ * signed or public URL: PostgreSQL remains the authority for object ownership.
+ */
+export class SupabaseObjectStorage implements ObjectStorage {
+  private readonly client: SupabaseClient;
   public constructor(
     private readonly input: {
       bucket: string;
-      endpoint?: string | undefined;
-      region: string;
+      serviceRoleKey: string;
+      url: string;
     },
+    client?: SupabaseClient,
   ) {
-    this.client = new S3Client({
-      ...(input.endpoint ? { endpoint: input.endpoint } : {}),
-      region: input.region,
-    });
+    this.client =
+      client ??
+      createClient(input.url, input.serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
   }
   public async put(input: {
     body: Buffer;
     contentType: string;
     key: string;
   }): Promise<void> {
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.input.bucket,
-        Key: input.key,
-        Body: input.body,
-        ContentType: input.contentType,
-      }),
-    );
+    const { error } = await this.client.storage
+      .from(this.input.bucket)
+      .upload(input.key, input.body, {
+        contentType: input.contentType,
+        upsert: false,
+      });
+    this.throwStorageError(error);
   }
   public async get(key: string): Promise<StoredObject> {
-    const result = await this.client.send(
-      new GetObjectCommand({ Bucket: this.input.bucket, Key: key }),
-    );
-    if (!result.Body) throw new Error('OBJECT_NOT_FOUND');
+    const { data, error } = await this.client.storage
+      .from(this.input.bucket)
+      .download(key);
+    this.throwStorageError(error);
+    if (!data) throw new Error('OBJECT_NOT_FOUND');
     return {
-      body: Buffer.from(await result.Body.transformToByteArray()),
-      contentType: result.ContentType ?? 'application/octet-stream',
+      body: Buffer.from(await data.arrayBuffer()),
+      contentType: data.type || 'application/octet-stream',
     };
   }
   public async exists(key: string): Promise<boolean> {
     try {
-      await this.client.send(
-        new HeadObjectCommand({ Bucket: this.input.bucket, Key: key }),
-      );
+      await this.get(key);
       return true;
     } catch (error) {
-      if (error instanceof Error && error.name === 'NotFound') return false;
+      if (error instanceof Error && error.message === 'OBJECT_NOT_FOUND')
+        return false;
       throw error;
     }
   }
   public async delete(key: string): Promise<void> {
-    await this.client.send(
-      new DeleteObjectCommand({ Bucket: this.input.bucket, Key: key }),
-    );
+    const { error } = await this.client.storage
+      .from(this.input.bucket)
+      .remove([key]);
+    this.throwStorageError(error);
+  }
+  private throwStorageError(error: unknown): void {
+    if (!error) return;
+    const status =
+      typeof error === 'object' && error !== null && 'statusCode' in error
+        ? (error as { statusCode?: unknown }).statusCode
+        : undefined;
+    if (status === 404) throw new Error('OBJECT_NOT_FOUND');
+    // Do not leak a URL, service-role credential, or upstream detail into an
+    // application response or structured log.
+    throw new Error('SUPABASE_STORAGE_ERROR');
   }
 }
 
@@ -108,9 +118,9 @@ export function objectStorageFromEnvironment(): ObjectStorage {
   const environment = parseApiEnvironment(process.env);
   if (environment.FILES_STORAGE_DRIVER === 'memory')
     return new InMemoryObjectStorage();
-  return new S3ObjectStorage({
-    bucket: environment.FILES_S3_BUCKET!,
-    endpoint: process.env.FILES_S3_ENDPOINT,
-    region: environment.FILES_S3_REGION!,
+  return new SupabaseObjectStorage({
+    bucket: environment.SUPABASE_STORAGE_BUCKET!,
+    serviceRoleKey: environment.SUPABASE_SERVICE_ROLE_KEY!,
+    url: environment.SUPABASE_URL!,
   });
 }

@@ -74,9 +74,10 @@ const apiEnvironmentSchema = z.object({
     .min(60_000)
     .max(86_400_000)
     .default(15 * 60_000),
-  FILES_STORAGE_DRIVER: z.enum(['memory', 's3']).default('memory'),
-  FILES_S3_BUCKET: z.string().trim().min(3).optional(),
-  FILES_S3_REGION: z.string().trim().min(1).optional(),
+  FILES_STORAGE_DRIVER: z.enum(['memory', 'supabase']).default('memory'),
+  SUPABASE_STORAGE_BUCKET: z.string().trim().min(3).optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().trim().min(1).optional(),
+  SUPABASE_URL: z.url().optional(),
   PLATFORM_CREDITS_PER_USD: z.string().regex(/^\d+$/).default('1000000'),
   NODE_ENV: environmentSchema.default('development'),
   LOG_LEVEL: z
@@ -219,13 +220,15 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
     ]);
   if (result.data.NODE_ENV === 'production') {
     if (!source.REDIS_URL) throw new EnvironmentValidationError(['REDIS_URL']);
-    if (result.data.FILES_STORAGE_DRIVER !== 's3')
+    if (result.data.FILES_STORAGE_DRIVER !== 'supabase')
       throw new EnvironmentValidationError(['FILES_STORAGE_DRIVER']);
-    if (!result.data.FILES_S3_BUCKET || !result.data.FILES_S3_REGION)
-      throw new EnvironmentValidationError([
-        'FILES_S3_BUCKET',
-        'FILES_S3_REGION',
-      ]);
+    const missingStorage = [
+      !result.data.SUPABASE_URL && 'SUPABASE_URL',
+      !result.data.SUPABASE_SERVICE_ROLE_KEY && 'SUPABASE_SERVICE_ROLE_KEY',
+      !result.data.SUPABASE_STORAGE_BUCKET && 'SUPABASE_STORAGE_BUCKET',
+    ].filter((key): key is string => Boolean(key));
+    if (missingStorage.length)
+      throw new EnvironmentValidationError([...missingStorage]);
     if (result.data.EMBEDDING_PROVIDER !== 'disabled')
       throw new EnvironmentValidationError(['EMBEDDING_PROVIDER']);
   }

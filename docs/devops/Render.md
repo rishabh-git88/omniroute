@@ -66,9 +66,9 @@ The Blueprint sync prompts for these API values:
 | `GROQ_API_KEY` | Groq API key, entered only on `omniroute-ai-router` |
 | `OPENROUTER_API_KEY` | OpenRouter API key, entered only on `omniroute-ai-router` |
 | `OPENAI_API_KEY` | Optional future OpenAI project key, entered only on `omniroute-ai-router` |
-| `FILES_S3_BUCKET` | Existing private S3-compatible bucket for original workspace source objects |
-| `FILES_S3_REGION` | Region of that private bucket |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Server-only S3 credentials, unless an IAM-compatible runtime identity supplies them |
+| `SUPABASE_URL` | Server-only Supabase project URL for native Storage access |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only privileged Storage credential; never add it to Vercel |
+| `SUPABASE_STORAGE_BUCKET` | Existing **private** bucket for original workspace source objects |
 
 Do not create a second Free Key Value instance. Copy the existing instance's
 internal/private connection string into `REDIS_URL`; never commit or expose it.
@@ -79,21 +79,20 @@ entry still controls whether any model can execute.
 
 ## Private file objects and retrieval
 
-The API stores original TXT, Markdown, and PDF source bytes in a private S3
-bucket and never returns public or presigned object URLs. Block public bucket
-access and grant the API runtime only GetObject, PutObject, HeadObject, and
-DeleteObject permissions for its own prefix. Use server-side credentials or an
-IAM-compatible runtime identity; never create a public storage variable.
+The API stores original TXT, Markdown, and PDF source bytes in a private native
+Supabase Storage bucket and never returns public or presigned object URLs. The
+server-only service-role key is used only inside the API after workspace
+authorization; never create a public storage variable.
 
-Set `FILES_STORAGE_DRIVER=s3`, `FILES_S3_BUCKET`, and
-`FILES_S3_REGION` on the API. `FILES_S3_ENDPOINT` is optional for a private
-S3-compatible endpoint. The Blueprint sets `EMBEDDING_PROVIDER=disabled`
+Set `FILES_STORAGE_DRIVER=supabase`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET` on the API. The
+Blueprint sets `EMBEDDING_PROVIDER=disabled`
 deliberately: local hash embeddings are test/development infrastructure, not a
 production semantic embedding model. Until an approved production embedding
 provider is configured, processing fails closed with
 `EMBEDDING_PROVIDER_NOT_CONFIGURED` and files do not become retrievable.
 Supabase remains authoritative for metadata, chunks, embeddings, provenance,
-and frozen snapshots; S3 stores only the private source object.
+and frozen snapshots; Supabase Storage stores only the private source object.
 
 For bounded stale-processing recovery, use a trusted shell with the database
 connection and explicit confirmation:
@@ -105,7 +104,7 @@ pnpm --filter @omniroute/api files:recover
 ```
 
 It changes only stale processing state; it does not read document text or call
-S3, embeddings, or chat providers.
+Supabase Storage, embeddings, or chat providers.
 
 ## Development provider activation
 

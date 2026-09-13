@@ -26,7 +26,7 @@ Inputs are authenticated [[API-Design|REST requests]], provider events, jobs, an
 
 ## Dependencies
 
-[[PostgreSQL-Schema]], [[Redis]], object storage, [[AI-Router]], [[Context-Memory]], [[Credits-Billing]], [[ADR-004-FastAPI-Router-Service]], and [[Observability]].
+[[PostgreSQL-Schema]], native Supabase Storage for private source bytes, [[Redis]], [[AI-Router]], [[Context-Memory]], [[Credits-Billing]], [[ADR-004-FastAPI-Router-Service]], and [[Observability]].
 
 ## Data used
 

@@ -6,8 +6,8 @@ Accepted
 
 ## Decision
 
-OmniRoute stores supported workspace source objects in private S3-compatible
-storage under generated workspace/file identifiers. PostgreSQL remains the
+OmniRoute stores supported workspace source objects in private native Supabase
+Storage under generated workspace/file identifiers. PostgreSQL remains the
 authority for metadata, processing state, chunks, embeddings, provenance,
 deletion, and frozen context snapshots. The API accepts only TXT, Markdown, and
 text-layer PDF sources; no OCR, remote fetch, or embedded content execution
@@ -20,7 +20,7 @@ Historical snapshots retain their payload after source deletion.
 
 ## Consequences
 
-- Production requires private S3 configuration and an approved embedding
+- Production requires private Supabase Storage configuration and an approved embedding
   provider. Deterministic local embeddings are test/development only and
   production processing fails closed until that provider is approved.
 - PDF ingestion uses PDF.js text-layer extraction only; encrypted, malformed,

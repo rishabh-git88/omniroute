@@ -35,15 +35,13 @@ services:
       # Source objects are private. A reviewed production embedding adapter is
       # still required before uploaded files can become READY.
       - key: FILES_STORAGE_DRIVER
-        value: s3
-      - key: FILES_S3_BUCKET
+        value: supabase
+      - key: SUPABASE_URL
         sync: false
-      - key: FILES_S3_REGION
+      - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      # Leave these unset when the runtime uses an IAM-compatible identity.
-      - key: AWS_ACCESS_KEY_ID
+      - key: SUPABASE_STORAGE_BUCKET
         sync: false
-      - key: AWS_SECRET_ACCESS_KEY
         sync: false
       - key: EMBEDDING_PROVIDER
         value: disabled

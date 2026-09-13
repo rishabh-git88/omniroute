@@ -1,5 +1,13 @@
 # OmniRoute Release Blockers and Backlog
 
+## 2026-09-13 release-candidate decision
+
+The clean source candidate `2dd9cc6543b1b431ed907d7348f95890ef9c84f5` is
+**BLOCKED** pending external acceptance. The authoritative matrix and operator
+actions are in [[RELEASE-CANDIDATE-2026-09-13]]. Existing historical backlog
+entries remain historical planning context and are not evidence that those
+external gates passed.
+
 Planning reset: 2026-09-10. Release decision: **BLOCKED** until the required
 product flows and deployment gates pass. This is an execution backlog, not
 authorization to implement or deploy.
@@ -44,7 +52,7 @@ overlap after its prerequisites pass; order does not imply a calendar estimate.
 | R08 | P0 | PARTIAL | Connect authenticated NestJS execution to FastAPI and all three providers | R02, R05, R06, R07 |
 | R09 | P0 | BROKEN | Complete per-run multiplexed streaming, reconnect, and cancellation | R04, R06, R08 |
 | R10 | P0 | PARTIAL | Complete routing modes, Compare 3, alternatives, and fallback UX | R05, R06, R07, R08, R09 |
-| R11 | P0 | PARTIAL | Complete S3 TXT/Markdown/PDF ingestion and workspace memory | R03, R05 |
+| R11 | P0 | PARTIAL | Complete private file ingestion and workspace memory | R03, R05 |
 | R12 | P0 | PARTIAL | Prove the complete frontend product flows and essential UX | R02, R04, R10, R11 |
 | R13 | P0 | NOT STARTED | Implement Redis/Valkey limits, health, and replica coordination | R06, R07, R09 |
 | R14 | P0 | NOT STARTED | Provision the fixed cloud architecture and OIDC delivery | R00, R01, R02 |
@@ -287,10 +295,10 @@ credits are available. Do not silently rename fewer responses as Compare 3.
 Files: frontend conversation UI, conversation services, registry/routing
 contracts, FastAPI routing/fallback, and usage integration.
 
-## R11 — S3 files and workspace memory
+## R11 — Private files and workspace memory
 
 Repair BigInt responses, request limits, and MIME/extension handling. Add private
-S3 objects, TXT/Markdown/PDF extraction, bounded processing, clear processing
+Supabase Storage objects, TXT/Markdown/PDF extraction, bounded processing, clear processing
 states, retry behavior, and deletion/retention. Do not mark content clean/ready
 without the corresponding checks. Restrict retrieval to authorized eligible
 files and use a validated production embedding approach.
@@ -299,7 +307,7 @@ Acceptance: all three required formats reach useful retrieval and canonical
 context; malformed/oversized/unsupported PDFs fail clearly without OCR; users
 cannot access another workspace's object or chunks; failed/deleted files are
 excluded; retries do not duplicate objects/chunks. Demonstrate relevance and
-context budgeting with fixtures. Exercise actual private S3 access in R16.
+context budgeting with fixtures. Exercise actual private Supabase Storage access in R16.
 
 Files: `apps/api/src/files/`, `apps/api/src/context/`, workspace upload UI,
 Prisma file/chunk/embedding models, and new storage/processing adapters within

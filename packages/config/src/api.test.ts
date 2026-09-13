@@ -33,16 +33,17 @@ describe('parseApiEnvironment', () => {
     }
   });
   it('fails closed for production file storage and unapproved embeddings', () => {
-    const base = {
+    const base: Record<string, string> = {
       NODE_ENV: 'production',
       AI_EXECUTION_PROVIDER: 'disabled',
-      FILES_STORAGE_DRIVER: 's3',
-      FILES_S3_BUCKET: 'private-omniroute-files',
-      FILES_S3_REGION: 'ap-southeast-1',
+      FILES_STORAGE_DRIVER: 'supabase',
+      SUPABASE_STORAGE_BUCKET: 'private-omniroute-files',
+      SUPABASE_SERVICE_ROLE_KEY: 'test-service-role-key',
+      SUPABASE_URL: 'https://project.supabase.co',
       EMBEDDING_PROVIDER: 'disabled',
       REDIS_URL: 'rediss://cache.example.internal:6380',
     };
-    expect(parseApiEnvironment(base).FILES_STORAGE_DRIVER).toBe('s3');
+    expect(parseApiEnvironment(base).FILES_STORAGE_DRIVER).toBe('supabase');
     expect(() =>
       parseApiEnvironment({ ...base, FILES_STORAGE_DRIVER: 'memory' }),
     ).toThrow('FILES_STORAGE_DRIVER');
@@ -54,6 +55,15 @@ describe('parseApiEnvironment', () => {
       delete withoutRedis.REDIS_URL;
       parseApiEnvironment(withoutRedis);
     }).toThrow('REDIS_URL');
+    for (const key of [
+      'SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'SUPABASE_STORAGE_BUCKET',
+    ]) {
+      const missing = { ...base };
+      delete missing[key];
+      expect(() => parseApiEnvironment(missing)).toThrow(key);
+    }
   });
 });
 

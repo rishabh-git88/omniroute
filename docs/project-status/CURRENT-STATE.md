@@ -1,5 +1,17 @@
 # OmniRoute Current State
 
+## Release-candidate assessment
+
+The 2026-09-13 source candidate is
+`2dd9cc6543b1b431ed907d7348f95890ef9c84f5`. Local deterministic, disposable
+database, browser, Compose, and clean-build gates pass. It is **not ready for a
+production release** because required external evidence and configuration remain
+absent: Render Redis acceptance, real OAuth, live reviewed-provider acceptance,
+private Supabase Storage, approved production embeddings, backup rehearsal, alert delivery,
+and deployment/CI revision matching. Public liveness/readiness were HTTP 200 on
+2026-09-13, but the candidate security headers were absent, so deployed revision
+matching is explicitly blocked. See [[RELEASE-CANDIDATE-2026-09-13]].
+
 ## Phase 7 frontend update
 
 Date: 2026-09-13. The current frontend is a server-backed product workspace,
@@ -8,7 +20,7 @@ Compare 3, selected-branch continuation, switching and Try Another AI,
 per-run SSE/reconnect/cancellation state, durable credits, and file processing
 status from the API. Compare 3 remains unavailable in production until three
 reviewed real registry entries are activated. File retrieval remains unavailable
-in production until private S3 and an approved production embedding strategy are
+in production until private Supabase Storage and an approved production embedding strategy are
 configured; the browser represents both states explicitly.
 
 The earlier planning-reset matrices below preserve historical audit evidence.
