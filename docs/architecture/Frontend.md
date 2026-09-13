@@ -12,7 +12,8 @@ Provide one stable Next.js workspace for comparison, response selection, continu
 - Consume [[API-Design|REST commands and multiplexed SSE]], demultiplex events by run ID, and reconnect with `Last-Event-ID`.
 - Maintain independent loading, streaming, failure, retry, and cancellation states per run.
 - Make the active response, branch, provider, model, latency, usage, and context handoff visible.
-- Use TanStack Query for server state and a small local store only for transient UI state.
+- Use the API as the source of server state and local React state only for
+  transient composer, stream, dialog, and layout state.
 - Provide keyboard-accessible and mobile-first comparison behavior.
 
 ## Inputs
@@ -45,7 +46,8 @@ Avoid retaining complete streams in global client state. Paginate history, virtu
 
 ## Implementation notes
 
-Use tabs or a carousel on mobile, with an optional desktop split view. Selection may occur after the first completion and does not wait for the slowest run.
+Compare cards use a desktop grid and stack on narrow screens. Selection may
+occur after the first completion and does not wait for the slowest run.
 
 The MVP supplies an authenticated sidebar, chat route, model selector, message
 composer, stream decoder, stop control, and regenerate control. It renders
@@ -57,6 +59,31 @@ Each completed response exposes a one-click “Try another AI” action and a
 “Continue with this answer” selection action. Provider and model labels remain
 visible on every candidate. Selecting a response highlights it as the preferred
 continuation without removing its alternatives.
+
+## Phase 7 product behavior
+
+The authenticated workspace is one server-backed flow: persisted conversation
+history and files load on entry; a new conversation may be Single AI or Compare
+3; the composer sends its selected Economy, Smart, or Max mode with every
+command. The model picker lists only server-provided registry models and
+disables unhealthy choices. Compare cards are keyed by `runId`, so interleaved
+SSE events, failures, cancellation, and reconnecting state remain independent.
+
+Compare 3 is deliberately unavailable when the API returns
+`COMPARE_REQUIRES_THREE_ELIGIBLE_MODELS`. The browser shows that reviewed-model
+gate and leaves Single AI usable; it never creates a fake third response.
+
+The browser reconnects request-group SSE with the last received event position
+and reloads the durable conversation after a terminal stream or exhausted
+retries. A page refresh only restores persisted state and subscribes to active
+runs; it never dispatches a new provider call. Per-run cancellation and group
+cancellation are separate commands. Errors are rendered from normalized server
+codes, not raw provider, parser, or storage text.
+
+Workspace file controls show server-reported processing state. A file is only
+described as available for retrieval when it is `READY`; production embedding
+and storage configuration errors are shown honestly. The UI never receives
+object keys, vector identifiers, or permanent file URLs.
 
 ## Related notes
 
@@ -87,5 +114,4 @@ runtime API URL to detect accidental runtime overrides.
 
 ## Open Questions
 
-- What exact responsive breakpoint enables the optional split comparison view?
 - Should a selection automatically cancel remaining runs or require a separate user action?

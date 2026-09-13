@@ -21,6 +21,22 @@ Keep deterministic contracts and invariants around nondeterministic provider API
 
 Use Vitest/Jest, Supertest, Playwright, and Testcontainers as appropriate. Live provider smoke tests are bounded and separate from deterministic CI.
 
+## Browser acceptance
+
+`pnpm --filter @omniroute/web test:browser` runs the built Next.js application
+in headless Chromium via the Chrome DevTools Protocol. It verifies public SSR,
+login-link construction, protected-route handling, favicon metadata, browser
+hydration, the compiled `NEXT_PUBLIC_API_URL`, and the retryable authentication
+outage state. It intercepts only synthetic API traffic and never uses Google or
+provider credentials. CI installs Chrome and runs this command in the dedicated
+`browser-e2e` job after a production web build.
+
+Conversation, Compare 3, streaming/replay, credit, file/RAG, and tenant
+authorization acceptance use deterministic API and disposable-database suites;
+they do not require live provider, cloud-storage, or OAuth credentials. A full
+staging browser journey remains an external release prerequisite because it
+requires the production services and deliberate test-user setup.
+
 Database and API integration suites now require the guarded disposable target
 described in [[Database-Verification]]. Both environment URLs are validated
 before any override, actual server identity is checked before writes, and

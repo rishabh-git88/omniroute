@@ -1,5 +1,23 @@
 # OmniRoute Current State
 
+## Phase 7 frontend update
+
+Date: 2026-09-13. The current frontend is a server-backed product workspace,
+not a mock dashboard. It renders persisted history, Single AI and registry-gated
+Compare 3, selected-branch continuation, switching and Try Another AI,
+per-run SSE/reconnect/cancellation state, durable credits, and file processing
+status from the API. Compare 3 remains unavailable in production until three
+reviewed real registry entries are activated. File retrieval remains unavailable
+in production until private S3 and an approved production embedding strategy are
+configured; the browser represents both states explicitly.
+
+The earlier planning-reset matrices below preserve historical audit evidence.
+Where they describe the pre-Phase 2 through Phase 6 implementation state, this
+Phase 7 update and the linked architecture notes supersede them. Current local
+verification includes deterministic unit/API/database suites and the built
+Chromium browser boundary test; full external OAuth, S3, embedding, and live
+provider acceptance remains an external release gate.
+
 ## Phase 0 production-baseline update
 
 Date: 2026-09-12. The current deployment architecture is Vercel at

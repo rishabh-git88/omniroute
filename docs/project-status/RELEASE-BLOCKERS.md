@@ -307,10 +307,18 @@ the existing module boundaries.
 
 ## R12 — Complete frontend acceptance
 
-Finish the browser experience around persisted conversations, actual model
-identity, balances, uploads, processing/error states, comparison selection, and
-retry/cancel. Include landing metadata/icons, responsive layouts, keyboard
-navigation, settings/dialog focus behavior, and accessible loading/error states.
+Implementation update, 2026-09-13: the browser product now consumes persisted
+conversation/history, actual provider/model identity, routing mode, files,
+balances, Compare 3 selection, Try Another AI, and per-run cancel/reconnect
+states. It maps normalized API errors to safe user messages and represents the
+reviewed-model Compare 3 gate and unconfigured embedding/storage states without
+fabricating availability. The CI `browser-e2e` job builds the web app and runs
+the deterministic Chromium boundary acceptance command.
+
+R12 remains **PARTIAL** until a deliberate staging acceptance run proves the
+authenticated browser journeys against deployed API, storage, embedding, and
+reviewed provider configuration. That run must use a test user and controlled
+fixtures; it must not use production provider credentials in CI.
 
 Acceptance: automated browser journeys cover login, history refresh, all modes,
 Compare 3/select/continue, alternatives, failure/fallback, low credits, and all

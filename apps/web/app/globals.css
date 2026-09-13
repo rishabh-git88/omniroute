@@ -911,6 +911,17 @@ textarea:focus-visible {
   cursor: default;
   opacity: 0.45;
 }
+.comparison-group-actions {
+  display: flex;
+  justify-content: flex-end;
+  grid-column: 1 / -1;
+}
+.file-chips span > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .composer-note {
   margin: 0.55rem 0 0;
   color: var(--faint);

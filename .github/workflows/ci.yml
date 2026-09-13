@@ -89,6 +89,29 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec turbo run test --filter=@omniroute/web
 
+  browser-e2e:
+    name: Browser acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - uses: browser-actions/setup-chrome@v1
+        id: chrome
+      - run: pnpm install --frozen-lockfile
+      - name: Build production workspace dependencies and web application
+        run: pnpm build
+      - name: Run deterministic browser acceptance
+        env:
+          CHROME_BINARY: ${{ steps.chrome.outputs.chrome-path }}
+        run: pnpm --filter @omniroute/web test:browser
+
   backend-tests:
     name: Backend unit tests
     runs-on: ubuntu-latest
@@ -178,6 +201,7 @@ jobs:
         lint,
         typecheck,
         frontend-tests,
+        browser-e2e,
         backend-tests,
         python-tests,
         integration-tests,

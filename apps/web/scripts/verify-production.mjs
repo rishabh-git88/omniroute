@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { cp, mkdtemp, readFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,6 +11,15 @@ import { fileURLToPath } from 'node:url';
 // profile and intercepts session checks: no OAuth or real API access is needed.
 const apiOrigin = new URL(process.env.NEXT_PUBLIC_API_URL).origin;
 const webRoot = fileURLToPath(new URL('..', import.meta.url));
+const standaloneRoot = join(webRoot, '.next', 'standalone', 'apps', 'web');
+// Next excludes static assets from standalone output. Production image assembly
+// copies them explicitly; the local browser gate must exercise the same layout
+// so client hydration can run.
+await cp(
+  join(webRoot, '.next', 'static'),
+  join(standaloneRoot, '.next', 'static'),
+  { force: true, recursive: true },
+);
 const profile = await mkdtemp(join(tmpdir(), 'omniroute-web-test-'));
 const reservation = createServer();
 reservation.listen(0, '127.0.0.1');
@@ -18,27 +27,25 @@ await once(reservation, 'listening');
 const port = reservation.address().port;
 await new Promise((resolve) => reservation.close(resolve));
 const webOrigin = `http://127.0.0.1:${port}`;
-const server = spawn(
-  process.execPath,
-  [
-    'node_modules/next/dist/bin/next',
-    'start',
-    '--hostname',
-    '127.0.0.1',
-    '--port',
-    String(port),
-  ],
-  {
-    cwd: webRoot,
-    // A runtime value must not override the public origin compiled into Next.js.
-    env: {
-      ...process.env,
-      NODE_ENV: 'production',
-      NEXT_PUBLIC_API_URL: 'https://runtime-must-not-override.invalid',
-    },
-    stdio: 'ignore',
+const server = spawn(process.execPath, ['server.js'], {
+  cwd: standaloneRoot,
+  // A runtime value must not override the public origin compiled into Next.js.
+  env: {
+    ...process.env,
+    HOSTNAME: '127.0.0.1',
+    NODE_ENV: 'production',
+    NEXT_PUBLIC_API_URL: 'https://runtime-must-not-override.invalid',
+    PORT: String(port),
   },
-);
+  stdio: ['ignore', 'pipe', 'pipe'],
+});
+let serverOutput = '';
+server.stdout.on('data', (chunk) => {
+  serverOutput += String(chunk);
+});
+server.stderr.on('data', (chunk) => {
+  serverOutput += String(chunk);
+});
 let chrome;
 let socket;
 try {
@@ -51,7 +58,7 @@ try {
     }
     if (ready) break;
     if (server.exitCode !== null)
-      throw new Error('Production web server exited');
+      throw new Error(`Production web server exited: ${serverOutput}`);
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert(ready, 'Production web server did not start');
@@ -156,7 +163,12 @@ try {
       });
     }
   };
-  await command('Fetch.enable', { patterns: [{ urlPattern: '*/v1/auth/me' }] });
+  // Intercept this path regardless of origin, then assert the origin below.
+  // A narrower expected-origin pattern would turn an accidental runtime origin
+  // override into a misleading "no request" failure.
+  await command('Fetch.enable', {
+    patterns: [{ urlPattern: '*/v1/auth/me*' }],
+  });
   await command('Page.navigate', { url: webOrigin });
   let html = '';
   for (let i = 0; i < 100; i++) {

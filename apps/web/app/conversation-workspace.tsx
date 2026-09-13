@@ -20,6 +20,7 @@ import {
 } from './conversation-command';
 import { API_V1_URL } from './api-url';
 import { useAuth } from './auth-provider';
+import { fileStatusMessage, productErrorMessage } from './product-error';
 import {
   acceptsStreamEvent,
   decodeSseFrames,
@@ -211,6 +212,11 @@ export function ConversationWorkspace({
     'SINGLE' | 'COMPARE'
   >('SINGLE');
   const hasPending = Object.keys(pendingRuns).length > 0;
+  const setProductError = useCallback((value: unknown) => {
+    setError(
+      productErrorMessage(value instanceof Error ? value.message : value),
+    );
+  }, []);
 
   const loadSidebar = useCallback(async () => {
     setConversations(await api<ConversationSummary[]>('/conversations'));
@@ -472,19 +478,24 @@ export function ConversationWorkspace({
   const createConversation = useCallback(async () => {
     if (auth.status !== 'authenticated') return null;
     setError(null);
-    const created = await api<{ id: string }>(
-      '/conversations',
-      {
-        method: 'POST',
-        body: JSON.stringify(createConversationCommand(newConversationMode)),
-      },
-      auth.session.csrfToken,
-    );
-    await loadSidebar();
-    router.push(`/chat/${created.id}`);
-    setMobileSidebarOpen(false);
-    return created.id;
-  }, [auth, loadSidebar, newConversationMode, router]);
+    try {
+      const created = await api<{ id: string }>(
+        '/conversations',
+        {
+          method: 'POST',
+          body: JSON.stringify(createConversationCommand(newConversationMode)),
+        },
+        auth.session.csrfToken,
+      );
+      await loadSidebar();
+      router.push(`/chat/${created.id}`);
+      setMobileSidebarOpen(false);
+      return created.id;
+    } catch (requestError) {
+      setProductError(requestError);
+      return null;
+    }
+  }, [auth, loadSidebar, newConversationMode, router, setProductError]);
 
   const send = useCallback(
     async (event: FormEvent) => {
@@ -532,11 +543,7 @@ export function ConversationWorkspace({
         await loadConversation(activeId);
       } catch (sendError) {
         setContent(message);
-        setError(
-          sendError instanceof Error
-            ? sendError.message
-            : 'Unable to send message',
-        );
+        setProductError(sendError);
       }
     },
     [
@@ -549,6 +556,7 @@ export function ConversationWorkspace({
       modelKey,
       routePreference,
       hasPending,
+      setProductError,
       stream,
     ],
   );
@@ -556,13 +564,33 @@ export function ConversationWorkspace({
   const stop = useCallback(
     async (runId: string) => {
       if (auth.status !== 'authenticated') return;
-      await api<void>(
-        `/model-runs/${runId}/cancel`,
-        { method: 'POST', body: '{}' },
-        auth.session.csrfToken,
-      );
+      try {
+        await api<void>(
+          `/model-runs/${runId}/cancel`,
+          { method: 'POST', body: '{}' },
+          auth.session.csrfToken,
+        );
+      } catch (requestError) {
+        setProductError(requestError);
+      }
     },
-    [auth],
+    [auth, setProductError],
+  );
+
+  const stopGroup = useCallback(
+    async (groupId: string) => {
+      if (auth.status !== 'authenticated') return;
+      try {
+        await api<void>(
+          `/request-groups/${groupId}/cancel`,
+          { method: 'POST', body: '{}' },
+          auth.session.csrfToken,
+        );
+      } catch (requestError) {
+        setProductError(requestError);
+      }
+    },
+    [auth, setProductError],
   );
 
   const startResult = useCallback(
@@ -612,14 +640,18 @@ export function ConversationWorkspace({
         );
         startResult(result, conversation.id);
       } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Unable to regenerate.',
-        );
+        setProductError(requestError);
       }
     },
-    [auth, conversation, modelKey, routePreference, hasPending, startResult],
+    [
+      auth,
+      conversation,
+      modelKey,
+      routePreference,
+      hasPending,
+      setProductError,
+      startResult,
+    ],
   );
 
   const tryAnother = useCallback(
@@ -627,7 +659,6 @@ export function ConversationWorkspace({
       if (!conversation || auth.status !== 'authenticated') return;
       setError(null);
       try {
-        const alternative = models.find((model) => model.modelKey !== modelKey);
         const result = await api<{
           requestGroupId: string;
           runIds: string[];
@@ -635,23 +666,19 @@ export function ConversationWorkspace({
         }>(
           `/model-responses/${responseId}/try-another`,
           {
-            body: JSON.stringify(
-              alternative ? { modelKey: alternative.modelKey } : {},
-            ),
+            // The server excludes attempts from this frozen snapshot and applies
+            // the same reviewed-model eligibility rules as every other run.
+            body: JSON.stringify({}),
             method: 'POST',
           },
           auth.session.csrfToken,
         );
         startResult(result, conversation.id);
       } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Unable to try another AI.',
-        );
+        setProductError(requestError);
       }
     },
-    [auth, conversation, modelKey, models, startResult],
+    [auth, conversation, startResult, setProductError],
   );
 
   const selectResponse = useCallback(
@@ -665,14 +692,10 @@ export function ConversationWorkspace({
         );
         await loadConversation(conversation.id);
       } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Unable to select this answer.',
-        );
+        setProductError(requestError);
       }
     },
-    [auth, conversation, loadConversation],
+    [auth, conversation, loadConversation, setProductError],
   );
 
   const uploadFile = useCallback(
@@ -723,16 +746,12 @@ export function ConversationWorkspace({
         );
         await loadFiles();
       } catch (uploadError) {
-        setError(
-          uploadError instanceof Error
-            ? uploadError.message
-            : 'Unable to upload that file.',
-        );
+        setProductError(uploadError);
       } finally {
         setUploading(false);
       }
     },
-    [auth, loadFiles],
+    [auth, loadFiles, setProductError],
   );
   const retryFile = useCallback(
     async (fileId: string) => {
@@ -745,14 +764,10 @@ export function ConversationWorkspace({
         );
         await loadFiles();
       } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Unable to retry that file.',
-        );
+        setProductError(requestError);
       }
     },
-    [auth, loadFiles],
+    [auth, loadFiles, setProductError],
   );
   const deleteFile = useCallback(
     async (fileId: string) => {
@@ -765,14 +780,10 @@ export function ConversationWorkspace({
         );
         await loadFiles();
       } catch (requestError) {
-        setError(
-          requestError instanceof Error
-            ? requestError.message
-            : 'Unable to delete that file.',
-        );
+        setProductError(requestError);
       }
     },
-    [auth, loadFiles],
+    [auth, loadFiles, setProductError],
   );
 
   const rename = useCallback(async () => {
@@ -1035,6 +1046,21 @@ export function ConversationWorkspace({
                     : 'response-stack'
                 }
               >
+                {turn.requestGroup.runs.some((run) =>
+                  ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'].includes(
+                    run.status,
+                  ),
+                ) ? (
+                  <div className="comparison-group-actions">
+                    <button
+                      className="response-action"
+                      onClick={() => void stopGroup(turn.requestGroup.id)}
+                      type="button"
+                    >
+                      Cancel remaining responses
+                    </button>
+                  </div>
+                ) : null}
                 {turn.responses.map((response) => (
                   <article
                     className={
@@ -1147,7 +1173,7 @@ export function ConversationWorkspace({
                         {run.partialContent ||
                           (run.status === 'CANCELLED'
                             ? 'This response was cancelled.'
-                            : 'This provider could not complete.')}
+                            : productErrorMessage(run.failureCode))}
                       </p>
                     </article>
                   ))}
@@ -1171,14 +1197,21 @@ export function ConversationWorkspace({
             </p>
           ) : null}
           {uploadedFiles.length ? (
-            <div className="file-chips">
+            <div className="file-chips" aria-label="Workspace files">
               {uploadedFiles.map((file) => (
                 <span key={file.id}>
-                  ⌁ {file.originalName} · {file.processingStatus.toLowerCase()}
+                  <span>
+                    ⌁ {file.originalName} ·{' '}
+                    {fileStatusMessage(
+                      file.processingStatus,
+                      file.processingErrorCode,
+                    )}
+                  </span>
                   {file.processingStatus === 'FAILED' ? (
                     <button
                       onClick={() => void retryFile(file.id)}
                       type="button"
+                      aria-label={`Retry ${file.originalName}`}
                     >
                       Retry
                     </button>
@@ -1186,6 +1219,7 @@ export function ConversationWorkspace({
                   <button
                     onClick={() => void deleteFile(file.id)}
                     type="button"
+                    aria-label={`Remove ${file.originalName}`}
                   >
                     Remove
                   </button>
@@ -1255,7 +1289,11 @@ export function ConversationWorkspace({
               maxLength={20000}
               onChange={(event) => setContent(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey) {
+                if (
+                  event.key === 'Enter' &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing
+                ) {
                   event.preventDefault();
                   event.currentTarget.form?.requestSubmit();
                 }
@@ -1276,6 +1314,7 @@ export function ConversationWorkspace({
                   className="icon-button"
                   disabled={uploading}
                   onClick={() => fileInput.current?.click()}
+                  aria-label="Attach a TXT, Markdown, or text PDF"
                   title="Attach a TXT, Markdown, or text PDF"
                   type="button"
                 >
