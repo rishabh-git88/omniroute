@@ -13,10 +13,20 @@ import {
   useState,
 } from 'react';
 
-import { conversationCommand, canAttemptModel } from './conversation-command';
+import {
+  conversationCommand,
+  canAttemptModel,
+  createConversationCommand,
+} from './conversation-command';
 import { API_V1_URL } from './api-url';
 import { useAuth } from './auth-provider';
-import { decodeSseFrames } from './conversation-stream';
+import {
+  acceptsStreamEvent,
+  decodeSseFrames,
+  MAX_STREAM_RECONNECTS,
+  reconnectDelayMs,
+  streamEndpoint,
+} from './conversation-stream';
 
 type Model = {
   health: string;
@@ -36,6 +46,7 @@ type ConversationSummary = {
 type Response = {
   content: string;
   id: string;
+  runId: string;
   model: { displayName: string; modelKey: string };
   provider: { displayName: string; key: string };
   selectedAt: string | null;
@@ -60,7 +71,14 @@ type Conversation = {
           selected?: boolean;
         }>;
       } | null;
-      runs: Array<{ id: string; status: string }>;
+      runs: Array<{
+        failureCode?: string;
+        id: string;
+        model: { displayName: string; modelKey: string };
+        partialContent?: string;
+        provider: { displayName: string; key: string };
+        status: string;
+      }>;
       status: string;
     };
     responses: Response[];
@@ -80,6 +98,7 @@ interface PendingRun {
   model?: string;
   provider?: string;
   routingMode?: string;
+  status?: 'failed' | 'running' | 'cancelled' | 'reconnecting';
 }
 
 type RoutePreference = 'smart' | 'economy' | 'max';
@@ -121,8 +140,15 @@ async function api<T>(
       ...init.headers,
     },
   });
-  if (!response.ok)
-    throw new Error((await response.text()) || 'Request failed');
+  if (!response.ok) {
+    const body = await response.text();
+    let message = body;
+    try {
+      const parsed = JSON.parse(body) as { message?: string };
+      message = parsed.message || message;
+    } catch {}
+    throw new Error(message || 'Request failed');
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -152,14 +178,18 @@ export function ConversationWorkspace({
 }) {
   const auth = useAuth();
   const router = useRouter();
-  const aborter = useRef<AbortController | null>(null);
+  const aborters = useRef(new Map<string, AbortController>());
+  const activeStreams = useRef(new Set<string>());
+  const cursors = useRef(new Map<string, number>());
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [models, setModels] = useState<Model[]>([]);
   const [modelKey, setModelKey] = useState('');
   const [content, setContent] = useState('');
-  const [pending, setPending] = useState<PendingRun | null>(null);
+  const [pendingRuns, setPendingRuns] = useState<Record<string, PendingRun>>(
+    {},
+  );
   const [error, setError] = useState<string | null>(null);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [routePreference, setRoutePreference] =
@@ -169,6 +199,10 @@ export function ConversationWorkspace({
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [darkTheme, setDarkTheme] = useState(true);
+  const [newConversationMode, setNewConversationMode] = useState<
+    'SINGLE' | 'COMPARE'
+  >('SINGLE');
+  const hasPending = Object.keys(pendingRuns).length > 0;
 
   const loadSidebar = useCallback(async () => {
     setConversations(await api<ConversationSummary[]>('/conversations'));
@@ -232,79 +266,149 @@ export function ConversationWorkspace({
 
   const stream = useCallback(
     async (groupId: string, conversationId: string) => {
+      if (activeStreams.current.has(groupId)) return;
+      activeStreams.current.add(groupId);
       const controller = new AbortController();
-      aborter.current = controller;
-      let buffer = '';
+      aborters.current.set(groupId, controller);
+      let completedStream = false;
       try {
-        const response = await fetch(
-          `${API_V1_URL}/request-groups/${groupId}/events`,
-          {
-            cache: 'no-store',
-            credentials: 'include',
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok || !response.body)
-          throw new Error('Unable to start response stream');
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        while (true) {
-          const next = await reader.read();
-          if (next.done) break;
-          const decoded = decodeSseFrames(
-            buffer + decoder.decode(next.value, { stream: true }),
-          );
-          buffer = decoded.remainder;
-          for (const frame of decoded.frames) {
-            if (
-              frame.event === 'fallback.started' ||
-              frame.event === 'run.status'
-            ) {
-              setPending((current) =>
-                current?.groupId === groupId
-                  ? {
-                      ...current,
-                      runId:
-                        typeof frame.data.runId === 'string'
-                          ? frame.data.runId
-                          : current.runId,
-                      ...(typeof frame.data.model === 'string'
-                        ? { model: frame.data.model }
-                        : {}),
-                      ...(typeof frame.data.provider === 'string'
-                        ? { provider: frame.data.provider }
-                        : {}),
-                      ...(typeof frame.data.routingMode === 'string'
-                        ? { routingMode: frame.data.routingMode }
-                        : {}),
-                    }
-                  : current,
-              );
-            }
-            if (frame.event === 'run.error')
-              setError('Generation could not complete. Please try again.');
-            if (frame.event !== 'content.delta') continue;
-            const delta =
-              typeof frame.data.delta === 'string' ? frame.data.delta : '';
-            setPending((current) =>
-              current?.groupId === groupId
-                ? { ...current, content: current.content + delta }
-                : current,
+        for (let attempt = 0; attempt <= MAX_STREAM_RECONNECTS; attempt += 1) {
+          if (controller.signal.aborted) break;
+          if (attempt > 0) {
+            setPendingRuns((current) =>
+              Object.fromEntries(
+                Object.entries(current).map(([id, run]) => [
+                  id,
+                  run.groupId === groupId && run.status === 'running'
+                    ? { ...run, status: 'reconnecting' as const }
+                    : run,
+                ]),
+              ),
+            );
+            await new Promise<void>((resolve) =>
+              window.setTimeout(resolve, reconnectDelayMs(attempt - 1)),
             );
           }
-        }
-      } catch (streamError) {
-        if (!controller.signal.aborted) {
-          setError(
-            streamError instanceof Error
-              ? streamError.message
-              : 'Stream failed',
-          );
+          let buffer = '';
+          try {
+            const cursor = cursors.current.get(groupId) ?? 0;
+            const response = await fetch(
+              `${API_V1_URL}${streamEndpoint(groupId, cursor)}`,
+              {
+                cache: 'no-store',
+                credentials: 'include',
+                headers: cursor ? { 'last-event-id': String(cursor) } : {},
+                signal: controller.signal,
+              },
+            );
+            if (!response.ok || !response.body)
+              throw new Error('Unable to start response stream');
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+              const next = await reader.read();
+              if (next.done) {
+                completedStream = true;
+                break;
+              }
+              const decoded = decodeSseFrames(
+                buffer + decoder.decode(next.value, { stream: true }),
+              );
+              buffer = decoded.remainder;
+              for (const frame of decoded.frames) {
+                const priorCursor = cursors.current.get(groupId) ?? 0;
+                if (!acceptsStreamEvent(priorCursor, frame.id)) continue;
+                if (frame.id) cursors.current.set(groupId, Number(frame.id));
+                if (frame.event === 'stream.reset') {
+                  const position = frame.data.eventPosition;
+                  if (typeof position === 'number')
+                    cursors.current.set(groupId, position);
+                  await loadConversation(conversationId);
+                  continue;
+                }
+                const runId =
+                  typeof frame.data.runId === 'string'
+                    ? frame.data.runId
+                    : null;
+                if (
+                  runId &&
+                  (frame.event === 'fallback.started' ||
+                    frame.event === 'run.status' ||
+                    frame.event === 'run.error')
+                ) {
+                  setPendingRuns((current) => {
+                    const previousRunId =
+                      frame.event === 'fallback.started' &&
+                      typeof frame.data.previousRunId === 'string'
+                        ? frame.data.previousRunId
+                        : runId;
+                    const prior = current[runId] ?? current[previousRunId];
+                    if (!prior || prior.groupId !== groupId) return current;
+                    const nextRuns = { ...current };
+                    if (runId !== previousRunId) delete nextRuns[previousRunId];
+                    return {
+                      ...nextRuns,
+                      [runId]: {
+                        ...prior,
+                        ...(typeof frame.data.modelKey === 'string'
+                          ? { model: frame.data.modelKey }
+                          : typeof frame.data.model === 'string'
+                            ? { model: frame.data.model }
+                            : {}),
+                        ...(typeof frame.data.provider === 'string'
+                          ? { provider: frame.data.provider }
+                          : {}),
+                        ...(typeof frame.data.routingMode === 'string'
+                          ? { routingMode: frame.data.routingMode }
+                          : {}),
+                        ...(frame.event === 'run.error'
+                          ? { status: 'failed' as const }
+                          : frame.data.status === 'cancelled'
+                            ? { status: 'cancelled' as const }
+                            : { status: 'running' as const }),
+                      },
+                    };
+                  });
+                }
+                if (frame.event === 'run.error')
+                  setError(
+                    'One response could not complete. Other responses remain available.',
+                  );
+                if (frame.event !== 'content.delta' || !runId) continue;
+                const delta =
+                  typeof frame.data.delta === 'string' ? frame.data.delta : '';
+                setPendingRuns((current) => {
+                  const prior = current[runId];
+                  return prior?.groupId === groupId
+                    ? {
+                        ...current,
+                        [runId]: { ...prior, content: prior.content + delta },
+                      }
+                    : current;
+                });
+              }
+            }
+            if (completedStream) break;
+          } catch (streamError) {
+            if (controller.signal.aborted) break;
+            if (attempt === MAX_STREAM_RECONNECTS) {
+              setError(
+                streamError instanceof Error
+                  ? `${streamError.message}. Reopen the conversation to recover its durable state.`
+                  : 'Stream connection was lost. Reopen the conversation to recover its durable state.',
+              );
+            }
+          }
         }
       } finally {
-        aborter.current = null;
-        setPending((current) =>
-          current?.groupId === groupId ? null : current,
+        aborters.current.delete(groupId);
+        activeStreams.current.delete(groupId);
+        setPendingRuns((current) =>
+          Object.fromEntries(
+            Object.entries(current).filter(
+              ([, run]) => run.groupId !== groupId,
+            ),
+          ),
         );
         await Promise.all([
           loadConversation(conversationId),
@@ -316,24 +420,59 @@ export function ConversationWorkspace({
     [loadConversation, loadSidebar, refreshWorkspace],
   );
 
+  // A refresh never re-dispatches a provider request. It rebuilds cards from
+  // durable run state and attaches to the existing group stream when work is
+  // still nonterminal.
+  useEffect(() => {
+    if (!conversation) return;
+    for (const turn of conversation.turns) {
+      const runs = turn.requestGroup.runs.filter((run) =>
+        ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'].includes(run.status),
+      );
+      if (!runs.length || activeStreams.current.has(turn.requestGroup.id))
+        continue;
+      setPendingRuns((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          runs.map((run) => [
+            run.id,
+            {
+              content: run.partialContent ?? '',
+              groupId: turn.requestGroup.id,
+              model: run.model.modelKey,
+              provider: run.provider.key,
+              runId: run.id,
+              turnId: turn.id,
+            },
+          ]),
+        ),
+      }));
+      void stream(turn.requestGroup.id, conversation.id);
+    }
+  }, [conversation, stream]);
+
   const createConversation = useCallback(async () => {
     if (auth.status !== 'authenticated') return null;
     setError(null);
     const created = await api<{ id: string }>(
       '/conversations',
-      { method: 'POST', body: JSON.stringify({ mode: 'SINGLE' }) },
+      {
+        method: 'POST',
+        body: JSON.stringify(createConversationCommand(newConversationMode)),
+      },
       auth.session.csrfToken,
     );
     await loadSidebar();
     router.push(`/chat/${created.id}`);
     setMobileSidebarOpen(false);
     return created.id;
-  }, [auth, loadSidebar, router]);
+  }, [auth, loadSidebar, newConversationMode, router]);
 
   const send = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
-      if (!content.trim() || pending || auth.status !== 'authenticated') return;
+      if (!content.trim() || hasPending || auth.status !== 'authenticated')
+        return;
       let activeId: string | null | undefined =
         conversation?.id ?? initialConversationId;
       if (!activeId) activeId = await createConversation();
@@ -357,14 +496,20 @@ export function ConversationWorkspace({
           },
           auth.session.csrfToken,
         );
-        const runId = result.runIds[0];
-        if (!runId) throw new Error('No model run was created');
-        setPending({
-          content: '',
-          groupId: result.requestGroupId,
-          runId,
-          turnId: result.turnId,
-        });
+        if (!result.runIds.length) throw new Error('No model run was created');
+        setPendingRuns(
+          Object.fromEntries(
+            result.runIds.map((runId) => [
+              runId,
+              {
+                content: '',
+                groupId: result.requestGroupId,
+                runId,
+                turnId: result.turnId,
+              },
+            ]),
+          ),
+        );
         void stream(result.requestGroupId, activeId);
         await loadConversation(activeId);
       } catch (sendError) {
@@ -385,34 +530,42 @@ export function ConversationWorkspace({
       loadConversation,
       modelKey,
       routePreference,
-      pending,
+      hasPending,
       stream,
     ],
   );
 
-  const stop = useCallback(async () => {
-    if (!pending || auth.status !== 'authenticated') return;
-    await api<void>(
-      `/model-runs/${pending.runId}/cancel`,
-      { method: 'POST', body: '{}' },
-      auth.session.csrfToken,
-    );
-    aborter.current?.abort();
-  }, [auth, pending]);
+  const stop = useCallback(
+    async (runId: string) => {
+      if (auth.status !== 'authenticated') return;
+      await api<void>(
+        `/model-runs/${runId}/cancel`,
+        { method: 'POST', body: '{}' },
+        auth.session.csrfToken,
+      );
+    },
+    [auth],
+  );
 
   const startResult = useCallback(
     (
       result: { requestGroupId: string; runIds: string[]; turnId: string },
       conversationId: string,
     ) => {
-      const runId = result.runIds[0];
-      if (!runId) throw new Error('No model run was created');
-      setPending({
-        content: '',
-        groupId: result.requestGroupId,
-        runId,
-        turnId: result.turnId,
-      });
+      if (!result.runIds.length) throw new Error('No model run was created');
+      setPendingRuns(
+        Object.fromEntries(
+          result.runIds.map((runId) => [
+            runId,
+            {
+              content: '',
+              groupId: result.requestGroupId,
+              runId,
+              turnId: result.turnId,
+            },
+          ]),
+        ),
+      );
       void stream(result.requestGroupId, conversationId);
     },
     [stream],
@@ -420,7 +573,8 @@ export function ConversationWorkspace({
 
   const regenerate = useCallback(
     async (turnId: string) => {
-      if (!conversation || pending || auth.status !== 'authenticated') return;
+      if (!conversation || hasPending || auth.status !== 'authenticated')
+        return;
       try {
         const result = await api<{
           requestGroupId: string;
@@ -447,12 +601,12 @@ export function ConversationWorkspace({
         );
       }
     },
-    [auth, conversation, modelKey, routePreference, pending, startResult],
+    [auth, conversation, modelKey, routePreference, hasPending, startResult],
   );
 
   const tryAnother = useCallback(
     async (responseId: string) => {
-      if (!conversation || pending || auth.status !== 'authenticated') return;
+      if (!conversation || auth.status !== 'authenticated') return;
       setError(null);
       try {
         const alternative = models.find((model) => model.modelKey !== modelKey);
@@ -479,12 +633,12 @@ export function ConversationWorkspace({
         );
       }
     },
-    [auth, conversation, modelKey, models, pending, startResult],
+    [auth, conversation, modelKey, models, startResult],
   );
 
   const selectResponse = useCallback(
     async (turnId: string, responseId: string) => {
-      if (!conversation || pending || auth.status !== 'authenticated') return;
+      if (!conversation || auth.status !== 'authenticated') return;
       try {
         await api(
           `/turns/${turnId}/select`,
@@ -500,7 +654,7 @@ export function ConversationWorkspace({
         );
       }
     },
-    [auth, conversation, loadConversation, pending],
+    [auth, conversation, loadConversation],
   );
 
   const uploadFile = useCallback(
@@ -785,7 +939,18 @@ export function ConversationWorkspace({
               </article>
               <div
                 className={
-                  turn.responses.length > 1
+                  turn.responses.length +
+                    Object.values(pendingRuns).filter(
+                      (run) => run.turnId === turn.id,
+                    ).length +
+                    turn.requestGroup.runs.filter(
+                      (run) =>
+                        ['FAILED', 'CANCELLED'].includes(run.status) &&
+                        !turn.responses.some(
+                          (response) => response.runId === run.id,
+                        ),
+                    ).length >
+                  1
                     ? 'response-comparison'
                     : 'response-stack'
                 }
@@ -812,7 +977,6 @@ export function ConversationWorkspace({
                     <div className="response-actions">
                       <button
                         className="response-action"
-                        disabled={Boolean(pending)}
                         onClick={() => void tryAnother(response.id)}
                         type="button"
                       >
@@ -820,9 +984,7 @@ export function ConversationWorkspace({
                       </button>
                       <button
                         className="response-action primary-response-action"
-                        disabled={
-                          Boolean(pending) || Boolean(response.selectedAt)
-                        }
+                        disabled={Boolean(response.selectedAt)}
                         onClick={() =>
                           void selectResponse(turn.id, response.id)
                         }
@@ -835,24 +997,84 @@ export function ConversationWorkspace({
                     </div>
                   </article>
                 ))}
+                {Object.values(pendingRuns)
+                  .filter(
+                    (run) =>
+                      run.turnId === turn.id &&
+                      !turn.responses.some(
+                        (response) => response.runId === run.runId,
+                      ),
+                  )
+                  .map((run) => (
+                    <article
+                      className="message assistant-message streaming"
+                      key={run.runId}
+                    >
+                      <div className="message-label">
+                        <span className="model-badge">
+                          {run.model
+                            ? `${run.provider} · ${run.model}`
+                            : 'Routing response'}
+                          {run.routingMode ? ` · ${run.routingMode}` : ''}
+                        </span>
+                        {run.status === 'running' || !run.status ? (
+                          <span
+                            className="streaming-dot"
+                            aria-label="Streaming"
+                          />
+                        ) : null}
+                      </div>
+                      <p>
+                        {run.status === 'failed'
+                          ? 'This provider could not complete.'
+                          : run.status === 'cancelled'
+                            ? 'This response was cancelled.'
+                            : run.status === 'reconnecting'
+                              ? run.content || 'Reconnecting to this response…'
+                              : run.content || 'Thinking…'}
+                      </p>
+                      {run.status === 'running' || !run.status ? (
+                        <button
+                          className="response-action"
+                          onClick={() => void stop(run.runId)}
+                          type="button"
+                        >
+                          Stop this response
+                        </button>
+                      ) : null}
+                    </article>
+                  ))}
+                {turn.requestGroup.runs
+                  .filter(
+                    (run) =>
+                      ['FAILED', 'CANCELLED'].includes(run.status) &&
+                      !turn.responses.some(
+                        (response) => response.runId === run.id,
+                      ) &&
+                      !pendingRuns[run.id],
+                  )
+                  .map((run) => (
+                    <article
+                      className="message assistant-message streaming"
+                      key={run.id}
+                    >
+                      <div className="message-label">
+                        <span className="model-badge">
+                          {run.provider.displayName} · {run.model.displayName}
+                        </span>
+                      </div>
+                      <p>
+                        {run.partialContent ||
+                          (run.status === 'CANCELLED'
+                            ? 'This response was cancelled.'
+                            : 'This provider could not complete.')}
+                      </p>
+                    </article>
+                  ))}
               </div>
-              {pending?.turnId === turn.id ? (
-                <article className="message assistant-message streaming">
-                  <div className="message-label">
-                    <span className="model-badge">
-                      {pending.model
-                        ? `${pending.provider} · ${pending.model}`
-                        : 'Routing response'}
-                      {pending.routingMode ? ` · ${pending.routingMode}` : ''}
-                    </span>
-                    <span className="streaming-dot" aria-label="Streaming" />
-                  </div>
-                  <p>{pending.content || 'Thinking…'}</p>
-                </article>
-              ) : null}
               <button
                 className="regenerate-button"
-                disabled={Boolean(pending)}
+                disabled={hasPending}
                 onClick={() => void regenerate(turn.id)}
                 type="button"
               >
@@ -897,8 +1119,41 @@ export function ConversationWorkspace({
                   </button>
                 ))}
               </div>
-              <span className="route-hint">{preference.description}</span>
+              <span className="route-hint">
+                {conversation?.mode === 'COMPARE'
+                  ? 'Compare three reviewed models'
+                  : preference.description}
+              </span>
             </div>
+            {!conversation ? (
+              <div className="route-selector" aria-label="Conversation mode">
+                <button
+                  className={
+                    newConversationMode === 'SINGLE'
+                      ? 'route-option active'
+                      : 'route-option'
+                  }
+                  onClick={() => setNewConversationMode('SINGLE')}
+                  type="button"
+                >
+                  Single AI
+                </button>
+                <button
+                  className={
+                    newConversationMode === 'COMPARE'
+                      ? 'route-option active'
+                      : 'route-option'
+                  }
+                  onClick={() => {
+                    setNewConversationMode('COMPARE');
+                    setModelKey('');
+                  }}
+                  type="button"
+                >
+                  Compare 3
+                </button>
+              </div>
+            ) : null}
             <textarea
               aria-label="Message"
               maxLength={20000}
@@ -951,26 +1206,17 @@ export function ConversationWorkspace({
                   </select>
                 </label>
               </div>
-              {pending ? (
-                <button
-                  className="stop-button"
-                  onClick={() => void stop()}
-                  type="button"
-                >
-                  Stop
-                </button>
-              ) : (
-                <button
-                  className="send-button"
-                  disabled={
-                    !content.trim() ||
-                    !models.some((model) => canAttemptModel(model.health))
-                  }
-                  type="submit"
-                >
-                  Send <span aria-hidden="true">↑</span>
-                </button>
-              )}
+              <button
+                className="send-button"
+                disabled={
+                  hasPending ||
+                  !content.trim() ||
+                  !models.some((model) => canAttemptModel(model.health))
+                }
+                type="submit"
+              >
+                Send <span aria-hidden="true">↑</span>
+              </button>
             </div>
           </form>
           <p className="composer-note">

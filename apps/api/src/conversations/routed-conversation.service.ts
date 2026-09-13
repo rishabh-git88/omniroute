@@ -13,11 +13,11 @@ import {
 import { ConversationMode } from '../generated/prisma/client.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { ContextBuilderService } from '../context/context-builder.service.js';
-import { modelBudget } from '../context/context-budget.js';
+import { enforceBudget, modelBudget } from '../context/context-budget.js';
 import {
-  snapshotData,
-  readFrozen,
   frozenBudget,
+  readFrozen,
+  snapshotData,
 } from '../context/frozen-context.js';
 import { PrismaModelRegistryRepository } from '../model-registry/model-registry.repository.js';
 import { AiRouterClient } from '../providers/ai-router.client.js';
@@ -29,6 +29,31 @@ import { CreditBillingService } from '../usage/credit-billing.service.js';
 import { ConversationExecutionService } from './conversation-execution.service.js';
 import type { CreateMessageCommand } from './conversation.types.js';
 
+type PreparedRun = {
+  contextSnapshot: {
+    id: string;
+    payload: unknown;
+    snapshotHash: string;
+  } | null;
+  id: string;
+  model: { modelKey: string };
+  provider: { key: string };
+  registryEntryId: string;
+};
+
+const compareUnavailable = () =>
+  new ServiceUnavailableException({
+    code: 'COMPARE_REQUIRES_THREE_ELIGIBLE_MODELS',
+    message:
+      'Compare 3 is temporarily unavailable because fewer than three reviewed AI models are available.',
+  });
+
+/**
+ * The only real-provider conversation entrypoint. It persists the routing
+ * decision and all initial attempts before dispatching any provider request.
+ * Compare is deliberately an execution fan-out of the same canonical context,
+ * never three independently rebuilt conversations.
+ */
 @Injectable()
 export class RoutedConversationService {
   public constructor(
@@ -47,10 +72,10 @@ export class RoutedConversationService {
     command: CreateMessageCommand,
     parentResponseId?: string | null,
   ) {
-    const mode = routingModeSchema.parse(command.routingMode ?? 'smart');
+    const routingMode = routingModeSchema.parse(command.routingMode ?? 'smart');
     const signature = {
       content: command.content,
-      routingMode: mode,
+      routingMode,
       modelKey: command.modelKey ?? null,
       parentResponseId:
         parentResponseId === undefined ? 'active' : parentResponseId,
@@ -69,16 +94,13 @@ export class RoutedConversationService {
         });
         if (existing) {
           const saved = existing.routingDecision?.inputSnapshot as {
-            command?: unknown;
+            command?: Record<string, unknown>;
           } | null;
           if (
             existing.workspaceId !== workspaceId ||
             existing.conversationId !== conversationId ||
             Object.entries(signature).some(
-              ([key, value]) =>
-                (saved?.command as Record<string, unknown> | undefined)?.[
-                  key
-                ] !== value,
+              ([key, value]) => saved?.command?.[key] !== value,
             )
           )
             throw new ConflictException(
@@ -90,13 +112,10 @@ export class RoutedConversationService {
             fresh: false,
           };
         }
+
         const conversation = await tx.conversation.findFirstOrThrow({
           where: { id: conversationId, workspaceId, deletedAt: null },
         });
-        if (conversation.mode !== 'SINGLE')
-          throw new BadRequestException(
-            'Real-provider comparisons are not enabled',
-          );
         const entries = routingRegistry(await this.registry.findEnabled());
         if (!entries.length)
           throw new ServiceUnavailableException(
@@ -104,9 +123,10 @@ export class RoutedConversationService {
           );
         if (
           command.modelKey &&
-          !entries.some((e) => e.model.modelKey === command.modelKey)
+          !entries.some((entry) => entry.model.modelKey === command.modelKey)
         )
           throw new BadRequestException('Selected model is unavailable');
+
         const parent =
           parentResponseId === undefined
             ? conversation.activeHeadId
@@ -118,13 +138,14 @@ export class RoutedConversationService {
           }))
         )
           throw new BadRequestException('Invalid conversation branch');
+
         const group = await tx.requestGroup.create({
           data: {
             userId,
             workspaceId,
             conversationId,
             idempotencyKey: command.idempotencyKey,
-            mode: 'SINGLE',
+            mode: conversation.mode,
           },
         });
         const turn = await tx.turn.create({
@@ -135,6 +156,9 @@ export class RoutedConversationService {
             parentResponseId: parent ?? null,
           },
         });
+
+        // One context is assembled before model selection is persisted. A
+        // selected candidate which cannot hold it rolls this transaction back.
         const context = await this.contexts.build(
           {
             userId,
@@ -143,7 +167,9 @@ export class RoutedConversationService {
             turnId: turn.id,
             userRequest: command.content,
             maxInputTokens: Math.max(
-              ...entries.map((e) => modelBudget(e.capabilities).maxInputTokens),
+              ...entries.map(
+                (entry) => modelBudget(entry.capabilities).maxInputTokens,
+              ),
             ),
           },
           tx,
@@ -151,7 +177,11 @@ export class RoutedConversationService {
         const request = {
           requestGroupId: group.id,
           prompt: command.content,
-          mode,
+          mode: routingMode,
+          requestedMode:
+            conversation.mode === ConversationMode.COMPARE
+              ? 'compare'
+              : 'single',
           contextTokens: context.tokenEstimate,
           maxOutputTokens: 512,
           models: entries.map(routingSnapshot),
@@ -159,92 +189,145 @@ export class RoutedConversationService {
           ...(parseApiEnvironment(process.env).AI_ROUTING_REGION
             ? { region: parseApiEnvironment(process.env).AI_ROUTING_REGION }
             : {}),
-        };
+        } as const;
         let decision;
         try {
           decision = await this.router.route(request);
         } catch {
+          if (conversation.mode === ConversationMode.COMPARE)
+            throw compareUnavailable();
           throw new ServiceUnavailableException(
             'No compatible model is currently available for this request',
           );
         }
-        const selected = entries.find(
-          (e) =>
-            e.id === decision.selectedRegistryEntryId &&
-            e.model.modelKey === decision.selectedModel &&
-            e.provider.key === decision.selectedProvider,
-        );
-        if (!selected || decision.requestGroupId !== group.id)
+        if (decision.requestGroupId !== group.id)
           throw new ServiceUnavailableException('Invalid routing decision');
-        const ids = [
-          selected.id,
-          ...decision.fallbackCandidates.map((c) => c.registryEntryId),
+        const orderedIds = [
+          decision.selectedRegistryEntryId,
+          ...decision.fallbackCandidates.map(
+            (candidate) => candidate.registryEntryId,
+          ),
         ];
         if (
-          new Set(ids).size !== ids.length ||
-          ids.some((id) => !entries.some((e) => e.id === id))
+          new Set(orderedIds).size !== orderedIds.length ||
+          orderedIds.some((id) => !entries.some((entry) => entry.id === id))
         )
           throw new ServiceUnavailableException('Invalid routing candidates');
+        const selectedIds =
+          conversation.mode === ConversationMode.COMPARE
+            ? orderedIds.slice(0, 3)
+            : orderedIds.slice(0, 1);
+        if (
+          conversation.mode === ConversationMode.COMPARE &&
+          selectedIds.length !== 3
+        )
+          throw compareUnavailable();
+        const selected = selectedIds.map((id) => {
+          const entry = entries.find((candidate) => candidate.id === id);
+          if (!entry)
+            throw new ServiceUnavailableException('Invalid routing decision');
+          enforceBudget(context, modelBudget(entry.capabilities));
+          return entry;
+        });
+        if (
+          selected[0]?.id !== decision.selectedRegistryEntryId ||
+          selected[0]?.model.modelKey !== decision.selectedModel ||
+          selected[0]?.provider.key !== decision.selectedProvider
+        )
+          throw new ServiceUnavailableException('Invalid routing decision');
+
         await tx.routingDecision.create({
           data: {
             requestGroupId: group.id,
-            strategy: command.modelKey ? 'USER_SELECTED' : 'AUTO',
+            strategy:
+              conversation.mode === ConversationMode.COMPARE
+                ? 'COMPARE'
+                : command.modelKey
+                  ? 'USER_SELECTED'
+                  : 'AUTO',
             reason: decision.reason,
             inputSnapshot: JSON.parse(
-              JSON.stringify({ command: signature, mode, request, decision }),
+              JSON.stringify({
+                command: signature,
+                mode: routingMode,
+                request,
+                decision,
+              }),
             ),
             candidates: {
-              create: ids.map((id, position) => ({
-                registryEntryId: id,
+              create: orderedIds.map((registryEntryId, position) => ({
+                registryEntryId,
                 position,
-                selected: position === 0,
+                // This means selected for initial execution. Response selection
+                // remains a separate, explicit user action.
+                selected: selectedIds.includes(registryEntryId),
               })),
             },
           },
         });
-        const run = await tx.modelRun.create({
-          data: {
-            turnId: turn.id,
-            requestGroupId: group.id,
-            modelId: selected.modelId,
-            providerId: selected.providerId,
-            registryEntryId: selected.id,
-          },
-        });
-        await tx.contextSnapshot.create({
-          data: snapshotData(run.id, context, selected.capabilities),
-        });
+        const createdRuns = [];
+        for (const entry of selected) {
+          const run = await tx.modelRun.create({
+            data: {
+              turnId: turn.id,
+              requestGroupId: group.id,
+              modelId: entry.modelId,
+              providerId: entry.providerId,
+              registryEntryId: entry.id,
+            },
+          });
+          await tx.contextSnapshot.create({
+            data: snapshotData(run.id, context, entry.capabilities),
+          });
+          createdRuns.push(run);
+        }
         if (conversation.title === 'New conversation')
           await tx.conversation.update({
             where: { id: conversationId },
             data: { title: command.content.slice(0, 80) },
           });
-        return { groupId: group.id, turnId: turn.id, fresh: true };
+        return {
+          groupId: group.id,
+          turnId: turn.id,
+          fresh: true,
+          runIds: createdRuns.map((run) => run.id),
+        };
       },
       { timeout: 30000 },
     );
-    const runs = await this.database.client.modelRun.findMany({
+
+    const runs = (await this.database.client.modelRun.findMany({
       where: { requestGroupId: prepared.groupId },
       include: { model: true, provider: true, contextSnapshot: true },
       orderBy: { createdAt: 'asc' },
-    });
+    })) as PreparedRun[];
+    if (!prepared.fresh)
+      return {
+        requestGroupId: prepared.groupId,
+        runIds: runs.map((run) => run.id),
+        turnId: prepared.turnId,
+      };
+
     const route = await this.database.client.routingDecision.findUniqueOrThrow({
       where: { requestGroupId: prepared.groupId },
     });
     const saved = route.inputSnapshot as {
-      mode: RoutingMode;
       decision: {
+        fallbackCandidates: Array<{ registryEntryId: string }>;
         selectedModel: string;
         selectedProvider: string;
-        fallbackCandidates: Array<{ registryEntryId: string }>;
       };
+      mode: RoutingMode;
     };
-    const run = runs[0]!;
-    if (prepared.fresh) {
-      const snapshot = run.contextSnapshot!;
-      const context = readFrozen(snapshot);
-      const budget = frozenBudget(snapshot);
-      try {
+    const initialIds = new Set(runs.map((run) => run.registryEntryId));
+    try {
+      // Independent reservations are intentionally established before any
+      // provider dispatch. A failed setup is durable and no sibling is run.
+      for (const run of runs) {
+        const snapshot = run.contextSnapshot;
+        if (!snapshot) throw new Error('Model run has no frozen context');
+        const context = readFrozen(snapshot);
+        const budget = frozenBudget(snapshot);
         await this.billing.reserveForRun({
           userId,
           modelRunId: run.id,
@@ -252,9 +335,19 @@ export class RoutedConversationService {
           estimatedInputTokens: BigInt(context.tokenEstimate),
           maxOutputTokens: BigInt(budget.maxOutputTokens),
         });
-      } catch (error) {
-        await this.database.client.modelRun.update({
-          where: { id: run.id },
+      }
+    } catch (error) {
+      await Promise.all(
+        runs.map((run) =>
+          this.billing.releaseForRun(run.id, 'comparison_setup_failed'),
+        ),
+      );
+      await this.database.client.$transaction(async (tx) => {
+        await tx.modelRun.updateMany({
+          where: {
+            id: { in: runs.map((run) => run.id) },
+            status: { in: ['PENDING', 'QUEUED', 'RESERVED'] },
+          },
           data: {
             status: 'FAILED',
             completedAt: new Date(),
@@ -264,18 +357,29 @@ export class RoutedConversationService {
             },
           },
         });
-        await this.database.client.requestGroup.update({
+        await tx.requestGroup.update({
           where: { id: prepared.groupId },
           data: { status: 'FAILED' },
         });
-        throw error;
-      }
+      });
+      throw error;
+    }
+
+    for (const run of runs) {
+      const snapshot = run.contextSnapshot;
+      if (!snapshot) continue;
+      const context = readFrozen(snapshot);
+      const budget = frozenBudget(snapshot);
       this.execution.start({
         conversationId,
         groupId: prepared.groupId,
-        mode: ConversationMode.SINGLE,
+        mode:
+          runs.length === 3
+            ? ConversationMode.COMPARE
+            : ConversationMode.SINGLE,
         runId: run.id,
-        selectOnComplete: true,
+        turnId: prepared.turnId,
+        selectOnComplete: runs.length === 1,
         request: {
           context,
           contextSnapshotId: snapshot.id,
@@ -290,18 +394,21 @@ export class RoutedConversationService {
           originalModel: saved.decision.selectedModel,
           originalProvider: saved.decision.selectedProvider,
           fallbackCount: 0,
+          // Initial compare runs are distinct. Only models outside the initial
+          // fan-out may become a fallback attempt for a failed child run.
           fallbackRegistryEntryIds: command.modelKey
             ? []
             : saved.decision.fallbackCandidates
-                .slice(0, 2)
-                .map((c) => c.registryEntryId),
+                .map((candidate) => candidate.registryEntryId)
+                .filter((id) => !initialIds.has(id))
+                .slice(0, 2),
           failures: [],
         },
       });
     }
     return {
       requestGroupId: prepared.groupId,
-      runIds: runs.map((r) => r.id),
+      runIds: runs.map((run) => run.id),
       turnId: prepared.turnId,
     };
   }

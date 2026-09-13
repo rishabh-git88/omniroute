@@ -155,9 +155,19 @@ and [Gemini generateContent](https://ai.google.dev/api/generate-content).
 - Which shared health/admission and execution recovery mechanism will support
   multiple API/router workers before horizontal deployment?
 
-Compare 3 still needs independent concurrent run UI, replay/reconnect correctness,
-selection/continuation acceptance, and per-run cancellation/accounting under
-failures. Real alternatives and Compare 3 remain disabled.
+Phase 3 implements the product loop: one request group/turn and frozen canonical
+context fan out to exactly three distinct eligible initial runs, each with its
+own reservation and independent SSE identity. A completed response becomes the
+active head only after explicit transactional selection; continuation therefore
+uses the selected branch alone. Try Another AI reuses the exact frozen snapshot,
+and per-run cancellation leaves sibling runs active. The UI renders independent
+run cards and preserves successful siblings when another provider fails.
+
+This does not make production Compare 3 available by itself. NestJS rejects the
+request with `COMPARE_REQUIRES_THREE_ELIGIBLE_MODELS` before reservation or
+provider dispatch unless three real reviewed, healthy, enabled registry models
+fit the request. Durable cross-process replay/reconnect and broader credit
+recovery remain later phases.
 
 ## Related notes
 

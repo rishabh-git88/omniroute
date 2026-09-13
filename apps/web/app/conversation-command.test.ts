@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { conversationCommand, canAttemptModel } from './conversation-command';
+import {
+  conversationCommand,
+  canAttemptModel,
+  createConversationCommand,
+} from './conversation-command';
 
 describe('composer mode command', () => {
   it.each(['economy', 'smart', 'max'] as const)(
@@ -17,6 +21,9 @@ describe('composer mode command', () => {
       routingMode: 'max',
       modelKey: 'registry:model',
     });
+  });
+  it('sends Compare 3 as a backend conversation mode, not local-only state', () => {
+    expect(createConversationCommand('COMPARE')).toEqual({ mode: 'COMPARE' });
   });
   it.each([
     'disabled',

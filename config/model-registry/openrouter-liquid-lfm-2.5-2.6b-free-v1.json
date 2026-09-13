@@ -1,0 +1,30 @@
+{
+  "models": [
+    {
+      "provider": "openrouter",
+      "modelKey": "openrouter:liquid-lfm-2.5-2.6b:free",
+      "providerModelId": "liquid/lfm-2.5-2.6b:free",
+      "displayName": "LiquidAI LFM2.5-2.6B (free) via OpenRouter",
+      "registryVersion": 1,
+      "capabilities": {
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "files": false,
+        "images": false,
+        "search": false,
+        "tools": false,
+        "contextWindow": 65536,
+        "maxOutputTokens": 8192
+      },
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": "0",
+        "outputPerMillionTokens": "0",
+        "sourceUrl": "https://openrouter.ai/api/v1/models",
+        "reviewedAt": "2026-09-12T00:00:00Z"
+      },
+      "pricingVersion": "openrouter-liquid-lfm-2.5-2.6b-free-2026-09-12",
+      "effectiveAt": "2026-09-12T00:00:00Z",
+      "regionConstraints": []
+    }
+  ]
+}

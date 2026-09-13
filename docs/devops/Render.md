@@ -124,6 +124,27 @@ not activate a registry entry until a reviewer has inspected all reports and
 created a successor immutable registry version with the measured task, quality,
 and median-latency fields.
 
+Free-tier calibration is resumable. The evaluator preserves valid deterministic
+cases and retries only unfinished retryable cases with a bounded per-case retry
+budget. Resume only the same exact provider/model/version report:
+
+```bash
+PROVIDER_EVAL_CONFIRM=run-real-provider-evaluation \
+python scripts/evaluate_providers.py \
+  --provider gemini \
+  --resume /tmp/gemini-3.5-flash-evaluation.json \
+  --output /tmp/gemini-3.5-flash-evaluation.json \
+  --timeout-probe \
+  --delay-seconds 12 \
+  --rate-limit-cooldown-seconds 15 \
+  --max-retries 2 \
+  --max-attempts-per-case 3 \
+  --max-evaluation-seconds 600
+```
+
+The report records safe SSE frame structure and `[DONE]` observation for an
+incomplete stream. It contains no generated text, prompts, headers, or keys.
+
 ## Vercel and Google configuration
 
 Vercel Production environment variables:

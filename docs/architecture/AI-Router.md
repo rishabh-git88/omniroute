@@ -103,19 +103,35 @@ concurrency is bounded. [[ADR-016-Extensible-Provider-Adapter-Ecosystem]] record
 the extension.
 
 `AI_EXECUTION_PROVIDER=multi` admits any enabled external adapter subject to
-registry review and request eligibility. It does not encode a fixed trio. Real
-Compare 3 remains disabled; its future candidates must be selected from eligible
-registry entries.
+registry review and request eligibility. It does not encode a fixed trio. Compare
+3 creates one request group, one user turn, and exactly three distinct initial
+model runs from the router's ordered eligible registry candidates. NestJS builds
+one canonical context before selection, stores an immutable snapshot per run
+with the same hash, reserves each run independently, then starts the three runs
+concurrently. Stream events include conversation, request-group, run, provider,
+and model identity so response surfaces cannot overwrite one another.
+
+Compare 3 returns `COMPARE_REQUIRES_THREE_ELIGIBLE_MODELS` without dispatching
+or reserving when fewer than three reviewed, healthy, runtime-enabled models fit
+the request. It never substitutes disabled, mock, or duplicate models. The
+current production registry remains below that gate until three real-provider
+reviews are activated.
 
 Automatic modes permit up to two eligible fallback attempts before visible
 output for specific availability/transport failures. Each has its own persisted
 run/reservation and identical frozen context. Validation, authentication, safety,
 cancellation, admission, and output-limit errors never trigger fallback. NestJS
 owns fallback accounting; the legacy fallback HTTP endpoint remains disabled.
-Real Compare 3 and alternatives remain disabled pending independent run/replay
-and accounting acceptance. See [[ADR-013-Authenticated-Single-Provider-Execution]]
-for the retained execution boundary and [[ADR-014-Multi-Provider-Routing]] for
-its extension and operational limits.
+Responses are selected explicitly and transactionally; the selected response is
+the conversation head used by the next context build, so unselected siblings do
+not enter continuation history. Try Another AI creates a new independently
+reserved run from the original immutable snapshot and excludes models which have
+already answered that turn. Per-run cancellation leaves sibling comparison runs
+active. NestJS now supplies bounded cursor replay and PostgreSQL-backed refresh
+recovery; cross-replica ownership and Redis fanout remain deferred to Phase 8. See
+[[ADR-013-Authenticated-Single-Provider-Execution]] for the retained execution
+boundary and [[ADR-014-Multi-Provider-Routing]] for its extension and operational
+limits.
 
 ## Related notes
 

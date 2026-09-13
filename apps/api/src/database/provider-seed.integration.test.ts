@@ -77,7 +77,7 @@ describe('provider registry seed alignment', () => {
   it('is idempotent and creates no invented real-model pricing', async () => {
     await seedProviderRegistry(database);
     await seedProviderRegistry(database);
-    expect(await database.provider.count()).toBe(3);
+    expect(await database.provider.count()).toBe(5);
     expect(await database.provider.count({ where: { enabled: true } })).toBe(0);
     expect(await database.providerRegistryEntry.count()).toBe(0);
   });

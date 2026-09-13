@@ -168,7 +168,25 @@ export class ConversationService {
             model: run.model,
             provider: run.provider,
             status: run.status,
-            executionResult: run.executionResult,
+            // A failed/cancelled run has no selectable ModelResponse. Expose
+            // only the durable, normalized partial product state for refresh;
+            // raw upstream payloads never enter this representation.
+            ...(typeof (
+              run.executionResult as { partialOutput?: unknown } | null
+            )?.partialOutput === 'string'
+              ? {
+                  partialContent: (
+                    run.executionResult as { partialOutput: string }
+                  ).partialOutput,
+                }
+              : {}),
+            ...(typeof (run.executionResult as { failureCode?: unknown } | null)
+              ?.failureCode === 'string'
+              ? {
+                  failureCode: (run.executionResult as { failureCode: string })
+                    .failureCode,
+                }
+              : {}),
           })),
           status: turn.requestGroup.status,
         },
@@ -179,6 +197,7 @@ export class ConversationService {
           id: response.id,
           model: response.run.model,
           provider: response.run.provider,
+          runId: response.runId,
           selectedAt: response.selectedAt,
         })),
         userContent: turn.userContent,
@@ -363,6 +382,7 @@ export class ConversationService {
           runId: run.id,
         },
         runId: run.id,
+        turnId: turn.id,
         selectOnComplete: true,
       });
     }
@@ -409,6 +429,21 @@ export class ConversationService {
     });
     if (!run) throw new NotFoundException('Model run not found');
     await this.execution.cancel(run.requestGroupId, run.id);
+  }
+
+  public async cancelRequestGroup(workspaceId: string, groupId: string) {
+    const group = await this.database.client.requestGroup.findFirst({
+      where: { id: groupId, workspaceId, conversation: { deletedAt: null } },
+      select: { id: true, modelRuns: { select: { id: true, status: true } } },
+    });
+    if (!group) throw new NotFoundException('Request group not found');
+    await Promise.all(
+      group.modelRuns
+        .filter(
+          (run) => !['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status),
+        )
+        .map((run) => this.execution.cancel(group.id, run.id)),
+    );
   }
 
   /**
@@ -492,6 +527,7 @@ export class ConversationService {
         runId: run.id,
       },
       runId: run.id,
+      turnId: alternative.turnId,
       selectOnComplete: false,
     });
     return {
@@ -538,6 +574,7 @@ export class ConversationService {
     const group = await this.database.client.requestGroup.findFirst({
       where: { id: groupId, workspaceId, conversation: { deletedAt: null } },
       select: {
+        conversationId: true,
         id: true,
         status: true,
         modelRuns: { select: { id: true, status: true } },
@@ -629,15 +666,26 @@ export class ConversationService {
     requestedModelKey?: string,
   ) {
     const models = await this.registry.findEnabled();
-    if (executionProvider() !== 'fake')
-      throw new BadRequestException(
-        'Real-provider alternatives are not enabled',
-      );
-    const candidates = models.filter(
+    const health =
+      executionProvider() === 'fake'
+        ? new Map<string, string>([['fake', 'ready']])
+        : new Map(
+            (await this.router.health().catch(() => [])).map((entry) => [
+              entry.provider,
+              entry.status,
+            ]),
+          );
+    const candidates = (
+      executionProvider() === 'fake'
+        ? models.filter((entry) => entry.provider.key === 'fake')
+        : routingRegistry(models)
+    ).filter(
       (entry) =>
-        entry.provider.key === 'fake' &&
         entry.model.modelKey !== sourceModelKey &&
-        !attemptedModelKeys.has(entry.model.modelKey),
+        !attemptedModelKeys.has(entry.model.modelKey) &&
+        ['enabled', 'available', 'ready', 'degraded'].includes(
+          health.get(entry.provider.key) ?? 'unavailable',
+        ),
     );
     if (requestedModelKey) {
       const requested = candidates.find(

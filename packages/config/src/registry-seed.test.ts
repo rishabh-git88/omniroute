@@ -125,6 +125,12 @@ it.each([
     '0.30000000',
   ],
   [
+    'gemini-3.5-flash-v1.json',
+    'gemini',
+    'gemini:gemini-3.5-flash',
+    '1.50000000',
+  ],
+  [
     'groq-openai-gpt-oss-120b-v1.json',
     'groq',
     'groq:openai-gpt-oss-120b',
@@ -134,6 +140,12 @@ it.each([
     'openrouter-nemotron-3-ultra-free-v1.json',
     'openrouter',
     'openrouter:nvidia-nemotron-3-ultra-550b-a55b:free',
+    '0',
+  ],
+  [
+    'openrouter-liquid-lfm-2.5-2.6b-free-v1.json',
+    'openrouter',
+    'openrouter:liquid-lfm-2.5-2.6b:free',
     '0',
   ],
 ])(
@@ -151,3 +163,33 @@ it.each([
     );
   },
 );
+
+it('validates the measured Groq v2 candidate without activating it', async () => {
+  const source = await readFile(
+    new URL(
+      '../../../config/model-registry/groq-openai-gpt-oss-120b-v2.json',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const [model] = parseRegistrySeed(JSON.parse(source));
+  expect(model).toMatchObject({
+    provider: 'groq',
+    modelKey: 'groq:openai-gpt-oss-120b',
+    registryVersion: 2,
+    capabilities: {
+      taskScores: {
+        general: 100,
+        coding: 85.71,
+        reasoning: 100,
+        summarization: 91.67,
+      },
+      qualityScore: 94.34,
+      typicalLatencyMs: 766,
+    },
+  });
+  expect(validateRoutingRegistry(model)).toMatchObject({
+    provider: 'groq',
+    registryVersion: 2,
+  });
+});

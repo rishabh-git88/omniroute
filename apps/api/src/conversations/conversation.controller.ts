@@ -11,6 +11,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -90,6 +91,12 @@ function isTerminal(event: ConversationStreamEvent): boolean {
     event.type === 'run.status' &&
     ['cancelled', 'completed'].includes(String(event.data.status))
   );
+}
+
+function streamCursor(request: AuthenticatedRequest, after?: string): number {
+  const candidate = request.headers['last-event-id'] ?? after;
+  if (typeof candidate !== 'string' || !/^\d+$/.test(candidate)) return 0;
+  return Number(candidate);
 }
 
 @Controller('conversations')
@@ -220,6 +227,18 @@ export class ConversationStreamController {
     );
   }
 
+  @Post('request-groups/:groupId/cancel')
+  @HttpCode(204)
+  public async cancelGroup(
+    @Req() request: AuthenticatedRequest,
+    @Param('groupId') groupId: string,
+  ): Promise<void> {
+    await this.conversations.cancelRequestGroup(
+      authentication(request).workspace.id,
+      groupId,
+    );
+  }
+
   @Post('request-groups/:groupId/routing-decision')
   @HttpCode(204)
   public async persistRoutingDecision(
@@ -265,6 +284,7 @@ export class ConversationStreamController {
   public async stream(
     @Req() request: AuthenticatedRequest,
     @Param('groupId') groupId: string,
+    @Query('after') after: string | undefined,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const group = await this.conversations.requestGroupForWorkspace(
@@ -298,9 +318,10 @@ export class ConversationStreamController {
         )
         .map((run) => run.id),
     );
-    const latestId = this.events.history(groupId).at(-1)?.id ?? 0;
-    unsubscribe = this.events.subscribe(groupId, (event) => {
+    let latestId = streamCursor(request, after);
+    const apply = (event: ConversationStreamEvent) => {
       if (event.id <= latestId || closed) return;
+      latestId = event.id;
       writeEvent(stream, event);
       if (event.type === 'fallback.started') {
         pending.delete(String(event.data.previousRunId));
@@ -308,15 +329,26 @@ export class ConversationStreamController {
       }
       if (isTerminal(event)) pending.delete(String(event.data.runId));
       if (pending.size === 0) close();
+    };
+    unsubscribe = this.events.subscribe(groupId, (event) => {
+      apply(event);
     });
-    for (const event of this.events.history(groupId)) {
-      writeEvent(stream, event);
-      if (event.type === 'fallback.started') {
-        pending.delete(String(event.data.previousRunId));
-        pending.add(String(event.data.runId));
+    const replay = this.events.replay(groupId, latestId);
+    if (replay.resetRequired) {
+      const current = this.events.latestId(groupId);
+      stream.write(
+        `event: stream.reset\ndata: ${JSON.stringify({
+          conversationId: group.conversationId,
+          eventPosition: current,
+          requestGroupId: group.id,
+          reason: 'REPLAY_WINDOW_EXPIRED',
+        })}\n\n`,
+      );
+      latestId = current;
+    } else
+      for (const event of replay.events) {
+        apply(event);
       }
-      if (isTerminal(event)) pending.delete(String(event.data.runId));
-    }
     if (
       pending.size === 0 ||
       group.status === 'COMPLETED' ||

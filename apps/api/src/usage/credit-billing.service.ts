@@ -111,12 +111,19 @@ export class CreditBillingService {
         runId: input.modelRunId,
         ...usageInput,
       });
-    const wallet = await this.ledger.reconcile({
-      actualCredits: billedCredits,
-      idempotencyKey: input.idempotencyKey,
-      reservationId: reservation.id,
-      usage: usageInput,
-    });
+    // Compare children settle concurrently against one wallet. Retrying a
+    // serialization conflict is safe because both the reservation and usage
+    // event are idempotent; an otherwise complete provider response must not
+    // be turned into a reconciliation failure solely because a sibling held
+    // the wallet row first.
+    const wallet = await this.retrySerializable(() =>
+      this.ledger.reconcile({
+        actualCredits: billedCredits,
+        idempotencyKey: input.idempotencyKey,
+        reservationId: reservation.id,
+        usage: usageInput,
+      }),
+    );
     this.metrics.recordCreditSettlement(billedCredits);
     return wallet;
   }
@@ -206,5 +213,33 @@ export class CreditBillingService {
       inputPerMillionTokens: input,
       outputPerMillionTokens: output,
     };
+  }
+
+  private async retrySerializable<T>(operation: () => Promise<T>): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        const code =
+          error instanceof Prisma.PrismaClientKnownRequestError
+            ? error.code
+            : typeof error === 'object' && error !== null && 'code' in error
+              ? (error as { code?: unknown }).code
+              : undefined;
+        if (
+          !['P2010', 'P2028', 'P2034'].includes(
+            typeof code === 'string' ? code : '',
+          ) ||
+          attempt === 2
+        )
+          throw error;
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 10 * (attempt + 1));
+        });
+      }
+    }
+    throw lastError;
   }
 }

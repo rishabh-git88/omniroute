@@ -36,9 +36,13 @@ describe('real Fastify browser boundary', () => {
         {
           provide: ConversationService,
           useValue: {
-            requestGroupForWorkspace: vi
-              .fn()
-              .mockResolvedValue({ status: 'COMPLETED', modelRuns: [] }),
+            cancelRequestGroup: vi.fn().mockResolvedValue(undefined),
+            requestGroupForWorkspace: vi.fn().mockResolvedValue({
+              conversationId: 'conversation',
+              id: 'group',
+              status: 'COMPLETED',
+              modelRuns: [],
+            }),
           },
         },
       ],
@@ -153,6 +157,30 @@ describe('real Fastify browser boundary', () => {
       'rotated-test-token',
     );
     expect(response.body).toContain('test answer');
+  });
+  it('uses Last-Event-ID and asks the browser to reload durable state after hub loss', async () => {
+    const response = await app.inject({
+      url: '/v1/request-groups/group/events',
+      headers: { 'last-event-id': '999' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.body).toContain('event: stream.reset');
+    expect(response.body).toContain('"conversationId":"conversation"');
+  });
+  it('authorizes the idempotent request-group cancellation command', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/request-groups/group/cancel',
+      headers: { 'x-csrf-token': 'test-csrf' },
+    });
+    expect(response.statusCode).toBe(204);
+    const service = app.get(ConversationService) as unknown as {
+      cancelRequestGroup: ReturnType<typeof vi.fn>;
+    };
+    expect(service.cancelRequestGroup).toHaveBeenCalledWith(
+      'workspace',
+      'group',
+    );
   });
   it.each(['/cookie-test', '/clear-cookie-test'])(
     'sets/clears host-only same-origin session cookies and callback-scoped OAuth cookies: %s',

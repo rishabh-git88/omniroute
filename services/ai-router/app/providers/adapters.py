@@ -13,11 +13,100 @@ from app.contracts import (
     ProviderHealth,
 )
 from app.providers.base import (
+    SSE_DONE_EVENT,
     ProviderAdapter,
     ProviderErrorDiagnostic,
     ProviderTransport,
     ProviderTransportError,
 )
+
+
+def event_shape(raw: object) -> dict[str, object]:
+    """Return safe wire-shape evidence for guarded diagnostics only.
+
+    Values can contain provider output or user input, so this deliberately records
+    field names, container types, counts, and the finish reason only.
+    """
+
+    if not isinstance(raw, dict):
+        return {"eventType": type(raw).__name__}
+    summary: dict[str, object] = {
+        "topLevelFields": sorted(raw),
+        "fieldTypes": {key: type(value).__name__ for key, value in raw.items()},
+    }
+    candidates = raw.get("candidates")
+    if isinstance(candidates, list):
+        summary["candidateCount"] = len(candidates)
+        if candidates and isinstance(candidates[0], dict):
+            candidate = candidates[0]
+            summary["candidateFields"] = sorted(candidate)
+            reason = candidate.get("finishReason")
+            if isinstance(reason, str):
+                summary["finishReason"] = reason
+            content = candidate.get("content")
+            summary["contentType"] = type(content).__name__
+            if isinstance(content, dict):
+                summary["contentFields"] = sorted(content)
+                parts = content.get("parts")
+                summary["partCount"] = len(parts) if isinstance(parts, list) else None
+                if parts and isinstance(parts[0], dict):
+                    summary["firstPartFields"] = sorted(parts[0])
+    usage = raw.get("usageMetadata")
+    if isinstance(usage, dict):
+        summary["usageFields"] = sorted(usage)
+        summary["usageFieldTypes"] = {key: type(value).__name__ for key, value in usage.items()}
+    choices = raw.get("choices")
+    if isinstance(choices, list):
+        summary["choiceCount"] = len(choices)
+        if choices and isinstance(choices[0], dict):
+            choice = choices[0]
+            summary["choiceFields"] = sorted(choice)
+            summary["finishReasonPresent"] = isinstance(choice.get("finish_reason"), str)
+            delta = choice.get("delta")
+            summary["deltaType"] = type(delta).__name__
+            if isinstance(delta, dict):
+                summary["deltaFields"] = sorted(delta)
+                summary["deltaFieldTypes"] = {
+                    key: type(value).__name__ for key, value in delta.items()
+                }
+    openai_usage = raw.get("usage")
+    if isinstance(openai_usage, dict):
+        summary["usageFields"] = sorted(openai_usage)
+        summary["usageFieldTypes"] = {
+            key: type(value).__name__ for key, value in openai_usage.items()
+        }
+    if "id" in raw:
+        summary["requestIdPresent"] = isinstance(raw.get("id"), str)
+    return summary
+
+
+def stream_summary(state: dict[str, Any]) -> dict[str, object]:
+    """Return field-only streaming evidence for the guarded evaluator.
+
+    This is intentionally assembled from counts and event shapes. It must never
+    retain a prompt, generated text, request headers, or credentials.
+    """
+
+    return {
+        "sseFrameCount": state.get("sse_frame_count", 0),
+        "contentBearingFrameCount": state.get("content_frame_count", 0),
+        "usageFrameCount": state.get("usage_frame_count", 0),
+        "terminalFrameCount": state.get("terminal_frame_count", 0),
+        "doneObserved": state.get("done_observed", False),
+        "providerRequestIdObserved": state.get("request_id") is not None,
+        "eventShapes": state.get("event_shapes", []),
+    }
+
+
+def record_stream_shape(raw: dict[str, Any], state: dict[str, Any]) -> None:
+    if raw.get(SSE_DONE_EVENT) is True:
+        state["done_observed"] = True
+        return
+    state["sse_frame_count"] = state.get("sse_frame_count", 0) + 1
+    shape = event_shape(raw)
+    shapes = state.setdefault("event_shapes", [])
+    if isinstance(shapes, list) and shape not in shapes and len(shapes) < 8:
+        shapes.append(shape)
 
 
 def normalized_failure(
@@ -57,6 +146,7 @@ class StreamingAdapter(ProviderAdapter):
         self._observed_at = 0.0
         self._latency: int | None = None
         self._last_diagnostic: ProviderErrorDiagnostic | None = None
+        self._last_stream_summary: dict[str, object] | None = None
 
     def observe(self, code: str | None, latency_ms: int) -> None:
         states: dict[str, HealthStatus] = {
@@ -112,6 +202,11 @@ class StreamingAdapter(ProviderAdapter):
 
         return self._last_diagnostic
 
+    def last_stream_summary(self) -> dict[str, object] | None:
+        """Field-only stream evidence for the guarded evaluator."""
+
+        return self._last_stream_summary
+
     async def cancel(self, run_id: str) -> None:
         task = self._tasks.get(run_id)
         if task:
@@ -122,6 +217,7 @@ class StreamingAdapter(ProviderAdapter):
 
     async def stream(self, plan: ProviderExecutionPlan) -> AsyncGenerator[ProviderEvent, None]:
         self._last_diagnostic = None
+        self._last_stream_summary = None
         if not self._enabled or not self._api_key:
             yield normalized_failure(
                 plan, "PROVIDER_DISABLED" if not self._enabled else "PROVIDER_MISSING_CREDENTIALS"
@@ -143,8 +239,15 @@ class StreamingAdapter(ProviderAdapter):
                     )
                 ) as upstream:
                     async for raw in upstream:
+                        record_stream_shape(raw, state)
+                        state["last_event_shape"] = event_shape(raw)
                         for event in self._normalize(raw, plan, state):
+                            if event.type == "content.delta" and event.text:
+                                state["content_frame_count"] = (
+                                    state.get("content_frame_count", 0) + 1
+                                )
                             if event.type == "usage.updated":
+                                state["usage_frame_count"] = state.get("usage_frame_count", 0) + 1
                                 state["usage_final"] = event.usage_final is not False
                                 for key in ("input_tokens", "output_tokens"):
                                     value = getattr(event, key)
@@ -159,6 +262,9 @@ class StreamingAdapter(ProviderAdapter):
                                 ):
                                     event.total_tokens = event.input_tokens + event.output_tokens
                             if event.type == "run.completed":
+                                state["terminal_frame_count"] = (
+                                    state.get("terminal_frame_count", 0) + 1
+                                )
                                 event.finish_reason = state.get(
                                     "finish_reason", event.finish_reason
                                 )
@@ -206,8 +312,14 @@ class StreamingAdapter(ProviderAdapter):
                 },
             )
         except (ValueError, TypeError, KeyError, AttributeError):
+            self._last_diagnostic = ProviderErrorDiagnostic(
+                http_status=None,
+                provider_type="protocol",
+                event_shape=state.get("last_event_shape"),
+            )
             yield normalized_failure(plan, "PROVIDER_PROTOCOL_ERROR", True)
         finally:
+            self._last_stream_summary = stream_summary(state)
             self._tasks.pop(str(plan.request.run_id), None)
 
     def _headers(self) -> dict[str, str]:
@@ -352,6 +464,16 @@ class OpenAICompatibleChatAdapter(StreamingAdapter):
     def _normalize(
         self, raw: dict[str, Any], plan: ProviderExecutionPlan, state: dict[str, Any]
     ) -> list[ProviderEvent]:
+        if raw.get(SSE_DONE_EVENT) is True:
+            if state.get("terminal_ready"):
+                return [
+                    ProviderEvent(
+                        type="run.completed",
+                        run_id=plan.request.run_id,
+                        finish_reason=state["finish_reason"],
+                    )
+                ]
+            return []
         if raw.get("error"):
             error = raw["error"]
             code, retryable = error_code(error.get("code") or error.get("type", ""))
@@ -370,17 +492,28 @@ class OpenAICompatibleChatAdapter(StreamingAdapter):
             raise ValueError("Unexpected chat completion choices")
         if choices:
             choice = choices[0]
+            if not isinstance(choice, dict):
+                raise ValueError("Invalid chat completion choice")
             delta = choice.get("delta", {})
+            if not isinstance(delta, dict):
+                raise ValueError("Invalid chat completion delta")
             text = delta.get("content")
+            if text is not None and not isinstance(text, str):
+                raise ValueError("Invalid chat completion content")
             if text:
                 events.append(
                     ProviderEvent(type="content.delta", run_id=plan.request.run_id, text=text)
                 )
             reason = choice.get("finish_reason")
+            if reason is not None and not isinstance(reason, str):
+                raise ValueError("Invalid chat completion finish reason")
             if reason:
                 state["finish_reason"] = "length" if reason == "length" else reason
         if raw.get("usage") is not None:
+            if not isinstance(raw["usage"], dict):
+                raise ValueError("Invalid chat completion usage")
             usage = self.usage(raw["usage"])
+            state["usage"] = usage
             events.append(
                 ProviderEvent(
                     type="usage.updated",
@@ -392,14 +525,23 @@ class OpenAICompatibleChatAdapter(StreamingAdapter):
         if state.get("finish_reason"):
             if state["finish_reason"] in {"content_filter", "safety"}:
                 events.append(normalized_failure(plan, "SAFETY_STOP"))
-            elif raw.get("usage") is not None:
-                events.append(
-                    ProviderEvent(
-                        type="run.completed",
-                        run_id=plan.request.run_id,
-                        finish_reason=state["finish_reason"],
-                    )
-                )
+            elif state.get("usage"):
+                # OpenAI-compatible providers may send finish_reason, the final
+                # usage-only chunk, then [DONE] as three separate SSE frames.
+                # Keep the canonical terminal event pending until the explicit
+                # stream terminator is parsed instead of completing prematurely.
+                if raw.get("usage") is None:
+                    usage = state["usage"]
+                    if isinstance(usage, NormalizedUsage):
+                        events.append(
+                            ProviderEvent(
+                                type="usage.updated",
+                                usage_final=True,
+                                run_id=plan.request.run_id,
+                                **usage.model_dump(exclude_none=True),
+                            )
+                        )
+                state["terminal_ready"] = True
         return events
 
 

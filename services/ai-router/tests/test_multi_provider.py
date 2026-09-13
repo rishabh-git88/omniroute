@@ -10,7 +10,7 @@ from test_provider_contracts import MockTransport, plan
 from app.config import Settings
 from app.contracts import ProviderEvent, ProviderExecutionPlan
 from app.execution import execute
-from app.providers.base import ProviderTransportError
+from app.providers.base import ProviderTransportError, provider_transport_error
 from app.providers.registry import ProviderRegistry
 
 
@@ -200,6 +200,25 @@ def test_rejected_key_remains_an_auth_failure_on_subsequent_requests() -> None:
         assert second[-1].code == "PROVIDER_AUTH_FAILED"
         health = await registry.for_plan(execution_plan("groq")).health()
         assert health.status == "invalid_credentials"
+
+    asyncio.run(run())
+
+
+def test_http_error_factory_preserves_rate_limit_normalization() -> None:
+    class ErrorTransport(MockTransport):
+        async def stream_sse(self, *args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+            raise provider_transport_error(429, b'{"error":{"type":"rate_limit_error"}}', {}, {})
+            yield {}
+
+    async def run() -> None:
+        config = settings()
+        result = [
+            event
+            async for event in execute(
+                execution_plan("openai"), ProviderRegistry(config, ErrorTransport([])), config
+            )
+        ]
+        assert result[-1].code == "RATE_LIMITED"
 
     asyncio.run(run())
 

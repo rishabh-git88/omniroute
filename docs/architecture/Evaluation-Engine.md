@@ -43,10 +43,26 @@ The guarded `services/ai-router/scripts/evaluate_providers.py` calibration tool
 uses the existing `ProviderRegistry` and `execute()` path, never a public HTTP
 endpoint. It requires `PROVIDER_EVAL_CONFIRM=run-real-provider-evaluation`, runs
 one configured provider against twelve non-private deterministic prompts, and
-writes metrics without raw output. Task score is passed acceptance checks divided
-by total checks; quality is the unweighted mean of four category scores; typical
-latency is the median successful total latency. Failed requests are excluded from
-latency statistics and retained as failure codes.
+writes metrics without raw output. Each case has a stable ID and the runner can
+resume an exact provider/model/registry-version checkpoint, so a valid case is
+never sent again. A legacy v1 report can be migrated only when its candidate
+identity and ordered deterministic categories match exactly.
+
+The runner treats rate limits as operational evidence, never quality failures.
+It paces requests, uses a small bounded retry budget per unfinished case, honors
+a numeric `Retry-After` when upstream provides one, and applies a bounded
+cooldown with jitter. Operator sleep and cooldown time are excluded from request
+latency. A report is `COMPLETED` only after every case has a user-visible content
+delta, terminal completion, normalized final input/output/total usage, and no
+protocol or truncation failure. Task score is passed deterministic acceptance
+checks divided by total checks; quality is the unweighted mean of four category
+scores; typical latency is the median valid provider execution latency.
+
+Reports include only field names, container types, frame counts, terminal/usage
+ordering evidence, and `[DONE]` observation for stream diagnosis. They never
+include prompts, generated text, request headers, or credentials. Failed and
+rate-limited attempts remain in attempt history and are reported separately from
+task quality and valid latency measurements.
 
 ## Related notes
 

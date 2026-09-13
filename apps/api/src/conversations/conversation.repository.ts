@@ -179,6 +179,15 @@ export class PrismaConversationRepository implements ConversationRepository {
       });
       if (!response) throw new Error('Response not found in workspace');
 
+      const conversation = await transaction.conversation.findUniqueOrThrow({
+        where: { id: response.turn.conversationId },
+        select: { activeHeadId: true },
+      });
+      // Repeated browser submissions are harmless and do not churn selection
+      // timestamps while a concurrent client is reading the active branch.
+      if (response.selectedAt && conversation.activeHeadId === response.id)
+        return response;
+
       await transaction.modelResponse.updateMany({
         where: { turnId: response.turnId, selectedAt: { not: null } },
         data: { selectedAt: null },

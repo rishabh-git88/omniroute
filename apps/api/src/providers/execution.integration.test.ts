@@ -459,25 +459,101 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
     expect(mockCalls).not.toHaveBeenCalled();
   });
 
-  it.each(['groq', 'openrouter'] as const)(
+  it.each([
+    ['gemini', 'Gemini fixture response', 'gemini_fixture'],
+    ['groq', 'groq fixture response', 'groq_fixture'],
+    ['openrouter', 'openrouter fixture response', 'openrouter_fixture'],
+  ] as const)(
     'preserves %s identity through NestJS, FastAPI, persistence, and SSE',
-    async (providerKey) => {
+    async (providerKey, expectedContent, expectedRequestId) => {
       const operation = await start(
         `${providerKey} selected`,
         modelKeys[providerKey],
       );
       const stream = await (await events(operation.requestGroupId)).text();
-      expect(stream).toContain(`${providerKey} fixture response`);
+      expect(stream).toContain(expectedContent);
       const run = await saved(operation.runIds[0]!);
       expect(run.provider.key).toBe(providerKey);
       expect(run.model.modelKey).toBe(modelKeys[providerKey]);
-      expect(run.providerRequestId).toBe(`${providerKey}_fixture`);
+      expect(run.providerRequestId).toBe(expectedRequestId);
       expect(run.usageEvents[0]).toMatchObject({
         inputTokens: 12n,
         outputTokens: 8n,
       });
     },
   );
+
+  it('fans real Compare 3 into three runs with one frozen context and continues only the selected branch', async () => {
+    const conversation = await command('conversations', {
+      mode: 'COMPARE',
+      title: 'Real Compare 3',
+    });
+    const { id: conversationId } = (await conversation.json()) as {
+      id: string;
+    };
+    const response = await command(`conversations/${conversationId}/turns`, {
+      content: 'compare independently',
+      modelKey,
+      routingMode: 'smart',
+    });
+    expect(response.status).toBe(201);
+    const operation = (await response.json()) as {
+      requestGroupId: string;
+      runIds: string[];
+      turnId: string;
+    };
+    expect(operation.runIds).toHaveLength(3);
+    const stream = await (await events(operation.requestGroupId)).text();
+    for (const runId of operation.runIds)
+      expect(stream).toContain(`"runId":"${runId}"`);
+    const compared = await database.modelRun.findMany({
+      where: { id: { in: operation.runIds } },
+      include: { contextSnapshot: true, response: true, provider: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(compared.map((run) => run.status)).toEqual([
+      'COMPLETED',
+      'COMPLETED',
+      'COMPLETED',
+    ]);
+    expect(
+      new Set(compared.map((run) => run.contextSnapshot?.snapshotHash)).size,
+    ).toBe(1);
+    expect(compared.map((run) => run.provider.key)).toEqual([
+      'openai',
+      'anthropic',
+      'gemini',
+    ]);
+    const gemini = compared.find((run) => run.provider.key === 'gemini');
+    expect(gemini?.response).toBeTruthy();
+    const selected = await command(`turns/${operation.turnId}/select`, {
+      responseId: gemini!.response!.id,
+    });
+    expect(selected.status).toBe(201);
+    const next = await command(`conversations/${conversationId}/turns`, {
+      content: 'continue selected branch',
+      modelKey: modelKeys.groq,
+    });
+    expect(next.status).toBe(201);
+    const nextOperation = (await next.json()) as { runIds: string[] };
+    const nextRun = await database.modelRun.findUniqueOrThrow({
+      where: { id: nextOperation.runIds[0]! },
+    });
+    await (await events(nextRun.requestGroupId)).text();
+    const nextSnapshot = await database.contextSnapshot.findUniqueOrThrow({
+      where: { runId: nextRun.id },
+    });
+    const messages = (
+      nextSnapshot.payload as {
+        context: { messages: Array<{ content: string }> };
+      }
+    ).context.messages
+      .map((message) => message.content)
+      .join('\n');
+    expect(messages).toContain('Gemini fixture response');
+    expect(messages).not.toContain('Anthropic fixture response');
+    expect(messages).not.toContain('Hello from the OpenAI HTTP fixture.');
+  });
 
   it.each([
     ['failure', 'PROVIDER_ERROR', 'settled'],
@@ -552,16 +628,35 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
     }
   });
 
-  it('refuses real Compare 3 before dispatch or credit reservation', async () => {
-    const created = await command('conversations', { mode: 'COMPARE' });
-    const { id } = (await created.json()) as { id: string };
-    const before = requests.length;
-    const response = await command(`conversations/${id}/turns`, {
-      content: 'compare',
-      modelKey,
+  it('reports structured Compare 3 unavailability before dispatch when fewer than three models are eligible', async () => {
+    const disabled = await database.providerRegistryEntry.findMany({
+      where: { provider: { key: { not: 'openai' } } },
+      select: { id: true },
     });
-    expect(response.status).toBe(400);
-    expect(requests).toHaveLength(before);
+    await database.providerRegistryEntry.updateMany({
+      where: { id: { in: disabled.map((entry) => entry.id) } },
+      data: { enabled: false },
+    });
+    try {
+      const created = await command('conversations', { mode: 'COMPARE' });
+      const { id } = (await created.json()) as { id: string };
+      const before = requests.length;
+      const response = await command(`conversations/${id}/turns`, {
+        content: 'compare',
+        modelKey,
+      });
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        message:
+          'Compare 3 is temporarily unavailable because fewer than three reviewed AI models are available.',
+      });
+      expect(requests).toHaveLength(before);
+    } finally {
+      await database.providerRegistryEntry.updateMany({
+        where: { id: { in: disabled.map((entry) => entry.id) } },
+        data: { enabled: true },
+      });
+    }
   });
   it.each([
     ['economy', 'openai'],

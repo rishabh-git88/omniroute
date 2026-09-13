@@ -14,6 +14,7 @@ from app.providers.adapters import (
     OpenAIAdapter,
     OpenRouterAdapter,
 )
+from app.providers.base import SSE_DONE_EVENT
 from app.providers.registry import ProviderRegistry
 
 
@@ -34,6 +35,7 @@ class MockTransport:
         self.requests.append((url, headers, body))
         for event in self.events:
             yield event
+        yield {SSE_DONE_EVENT: True}
 
 
 def plan(provider: str) -> ProviderExecutionPlan:
@@ -210,14 +212,14 @@ def test_gemini_groq_and_openrouter_requests_follow_their_provider_contracts() -
     gemini_plan = plan("gemini")
     gemini_plan = gemini_plan.model_copy(
         update={
-            "model": gemini_plan.model.model_copy(update={"provider_model_id": "gemini-2.5-flash"})
+            "model": gemini_plan.model.model_copy(update={"provider_model_id": "gemini-3.5-flash"})
         }
     )
     gemini_url = gemini._url(gemini_plan)
     gemini_body = gemini._payload(gemini_plan)
     assert gemini_url == (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.5-flash:streamGenerateContent?alt=sse"
+        "gemini-3.5-flash:streamGenerateContent?alt=sse"
     )
     assert gemini._headers() == {
         "x-goog-api-key": "gemini-test-key",
@@ -250,3 +252,62 @@ def test_gemini_groq_and_openrouter_requests_follow_their_provider_contracts() -
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+
+
+def test_openai_compatible_terminal_waits_for_usage_only_final_chunk_and_done() -> None:
+    transport = MockTransport(
+        [
+            {"choices": [{"delta": {"role": "assistant"}}]},
+            {"choices": [{"delta": {"content": "hello"}}]},
+            {"choices": [{"delta": {}, "finish_reason": "stop"}]},
+            {"choices": [], "usage": {"prompt_tokens": 2, "completion_tokens": 1}},
+        ]
+    )
+    adapter = OpenRouterAdapter(enabled=True, api_key="test-secret", transport=transport)
+
+    async def collect() -> list[Any]:
+        return [event async for event in adapter.stream(plan("openrouter"))]
+
+    events = asyncio.run(collect())
+
+    assert [event.type for event in events] == [
+        "run.started",
+        "content.delta",
+        "usage.updated",
+        "run.completed",
+    ]
+    assert events[-1].finish_reason == "stop"
+    assert events[-1].provider_request_id is None
+    summary = adapter.last_stream_summary()
+    assert summary is not None and summary["doneObserved"] is True
+
+
+def test_openai_compatible_requires_an_explicit_done_marker_after_terminal_usage() -> None:
+    class TruncatedTransport(MockTransport):
+        async def stream_sse(
+            self, url: str, headers: dict[str, str], body: dict[str, Any]
+        ) -> AsyncGenerator[dict[str, Any], None]:
+            self.requests.append((url, headers, body))
+            for event in self.events:
+                yield event
+
+    transport = TruncatedTransport(
+        [
+            {"id": "request", "choices": [{"delta": {"content": "hello"}}]},
+            {"id": "request", "choices": [{"delta": {}, "finish_reason": "stop"}]},
+            {
+                "id": "request",
+                "choices": [],
+                "usage": {"prompt_tokens": 2, "completion_tokens": 1},
+            },
+        ]
+    )
+    adapter = OpenRouterAdapter(enabled=True, api_key="test-secret", transport=transport)
+
+    async def collect() -> list[Any]:
+        return [event async for event in adapter.stream(plan("openrouter"))]
+
+    events = asyncio.run(collect())
+
+    assert events[-1].type == "run.failed"
+    assert events[-1].code == "STREAM_TRUNCATED"

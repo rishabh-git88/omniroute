@@ -27,7 +27,9 @@ and provider-neutral adapters. OpenAI and Anthropic remain supported but may be
 disabled. Gemini, Groq, and OpenRouter adapters are available when their router
 flags and server-only credentials are configured. Their reviewed registry
 candidates remain disabled pending internal task/quality/latency evaluation, so
-they are not production routing evidence and Compare 3 is not complete.
+they are not production routing evidence. The registry-driven Compare 3 product
+loop is implemented and covered with deterministic provider fixtures, but it is
+production-blocked until three reviewed real models are enabled.
 
 Read alongside [RELEASE-SCOPE](RELEASE-SCOPE.md),
 [RELEASE-BLOCKERS](RELEASE-BLOCKERS.md), and
@@ -248,16 +250,16 @@ dependency-ordered backlog item that owns completion.
 | Production public landing experience | PARTIAL | Local production SSR/hydration, bounded background session checks, and branded icon/favicon pass. Public deployed acceptance remains. | R02, R12, R16 |
 | Google authentication | PARTIAL | OAuth/PKCE/state/nonce and session/CSRF code exist. Redirect/logging defects are fixed and sibling-domain cookie configuration is tested; live callback/session persistence and deployed topology remain unverified. | R02 |
 | Conversations | PARTIAL | Create/list/detail/selection repositories and endpoints exist; a complete authenticated persistence flow was not verified. | R03, R04, R12 |
-| Persisted messages | PARTIAL | Turns, runs, responses, and selected heads exist in Prisma. Partial output is lost on execution failure, and terminal accounting/state can diverge. | R03, R04, R06 |
-| Streaming | BROKEN | CORS and SSE header/cookie preservation are fixed and tested; replay still ignores event position and the UI is not isolated per run. | R09 |
+| Persisted messages | PARTIAL | Turns, runs, responses, and selected heads exist in Prisma. Normalized partial output is persisted for refresh after terminal failure/cancellation; Phase 5 still owns full financial recovery. | R03, R04, R06 |
+| Streaming | PARTIAL | SSE events have run identity, a bounded Last-Event-ID replay cursor, duplicate suppression, refresh reconstruction, and stale-run interruption recovery. Cross-replica coordination remains deferred to Phase 8. | R09 |
 | OpenAI product execution | PARTIAL | Python adapter and synthetic tests exist; NestJS calls only the mock. No live smoke result. | R07, R08 |
 | Anthropic product execution | PARTIAL | Adapter exists but initial input usage is lost; no connected product execution or live smoke result. | R07, R08 |
 | Gemini product execution | PARTIAL | Adapter exists but output-cap configuration is omitted; no connected product execution or live smoke result. | R07, R08 |
-| Economy mode | PARTIAL | Router cost ordering exists; zero cost is treated as missing. UI selection is not submitted to the router. | R07, R10 |
-| Smart mode | PARTIAL | Scoring exists in isolation; registry/health integration and UI-to-router behavior are incomplete. | R07, R10 |
-| Max mode | PARTIAL | Quality-first branch exists; end-to-end mode execution and sufficient targeted evidence are missing. | R07, R10 |
-| Compare 3 | PARTIAL | Domain schema and comparison-related structures exist; the UI creates SINGLE conversations and has no complete three-run loop. | R09, R10 |
-| Try Another AI | PARTIAL | Alternate-run/selection code exists; model choice, replay, per-run UI state, and frozen context guarantees are incomplete. | R05, R09, R10 |
+| Economy mode | PARTIAL | The frontend sends the selected mode; deterministic router ordering uses exact costs including zero. Live model availability remains gated by reviewed registry entries. | R07, R10 |
+| Smart mode | PARTIAL | The frontend sends the selected mode and the router persists its scored decision; live evidence remains dependent on reviewed entries. | R07, R10 |
+| Max mode | PARTIAL | The frontend sends the selected mode and quality-first routing enforces the same eligibility checks. | R07, R10 |
+| Compare 3 | PARTIAL | One frozen context fans out to three distinct eligible runs with independent UI/SSE state, reservations, and explicit selection. Production returns a safe unavailable state until three reviewed real models exist. | R09, R10 |
+| Try Another AI | PARTIAL | A new run uses the original immutable snapshot and excludes attempted models; production remains gated by reviewed registry/health eligibility. | R05, R09, R10 |
 | Automatic provider fallback | PARTIAL | Standalone synthetic fallback tests pass; disabled-provider exceptions and premature stream endings are mishandled; NestJS is disconnected. | R07, R08, R10 |
 | Provider-neutral context | BROKEN | Canonical bundle/branch traversal exist, but prior assistant text precedes its user prompt; token budgets and retrieval degradation are incomplete. | R05 |
 | Frozen context snapshots | PARTIAL | Snapshot metadata/hashes exist; immutable recoverable input is not fully stored, and alternatives rebuild context from mutable workspace state. | R05 |
@@ -297,9 +299,7 @@ dependency-ordered backlog item that owns completion.
   API-origin defects are fixed with regression and production-browser evidence.
 - Context: reversed user/assistant history; snapshots cannot reproduce exact
   input; alternatives can incorporate subsequent workspace changes.
-- Streaming: old events replay for alternate runs, event position is ignored,
-  terminal handling is not group-safe, and process-local state cannot support
-  replica changes or restart recovery.
+- Streaming: bounded replay now uses event positions and an expired cursor reloads durable state; per-run terminal handling and partial persistence are implemented. Cross-replica stream ownership/fanout remains deferred to Phase 8.
 - Uploads: successful service results contain BigInt and fail JSON serialization;
   advertised text size exceeds the default Fastify request-body limit; file
   readiness is not required before retrieval.

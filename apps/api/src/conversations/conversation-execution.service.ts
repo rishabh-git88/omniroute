@@ -5,7 +5,11 @@ import {
   providerIdSchema,
   type RoutingMode,
 } from '@omniroute/provider-contracts';
-import { Injectable, type OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import {
   canonicalChatRequestSchema,
   type CanonicalChatRequest,
@@ -32,6 +36,7 @@ export interface RunExecutionPlan {
   mode: ConversationMode;
   request: CanonicalChatRequest;
   runId: string;
+  turnId: string;
   selectOnComplete: boolean;
   routing?: {
     mode: RoutingMode;
@@ -45,7 +50,12 @@ export interface RunExecutionPlan {
 }
 
 @Injectable()
-export class ConversationExecutionService implements OnModuleDestroy {
+export class ConversationExecutionService
+  implements OnModuleDestroy, OnModuleInit
+{
+  private static readonly PARTIAL_PERSIST_BYTES = 1024;
+  private static readonly PARTIAL_PERSIST_MS = 500;
+  private static readonly STALE_RUN_MS = 5 * 60 * 1000;
   private readonly aliases = new Map<string, string>();
   private readonly active = new Map<
     string,
@@ -66,6 +76,71 @@ export class ConversationExecutionService implements OnModuleDestroy {
     await Promise.all(active.map((run) => run.done));
   }
 
+  public async onModuleInit(): Promise<void> {
+    // A health/degraded startup must not be converted into a crash merely
+    // because PostgreSQL is temporarily unavailable. Recovery is retried on
+    // the next healthy process start; no run is reported recovered without a
+    // durable write.
+    try {
+      await this.recoverStaleRuns();
+    } catch {
+      return;
+    }
+  }
+
+  /**
+   * Nest cannot safely resume an in-flight upstream socket after a process
+   * restart. Mark only old, nonterminal work as interrupted; dispatched runs
+   * retain their reservation for Phase 5 reconciliation rather than inventing
+   * a refund.
+   */
+  public async recoverStaleRuns(now = new Date()): Promise<number> {
+    const cutoff = new Date(
+      now.getTime() - ConversationExecutionService.STALE_RUN_MS,
+    );
+    const stale = await this.database.client.modelRun.findMany({
+      where: {
+        status: { in: ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'] },
+        OR: [
+          { startedAt: { lt: cutoff } },
+          { startedAt: null, createdAt: { lt: cutoff } },
+        ],
+      },
+      select: {
+        id: true,
+        requestGroupId: true,
+        startedAt: true,
+        executionResult: true,
+      },
+    });
+    for (const run of stale) {
+      const prior = (run.executionResult ?? {}) as Record<
+        string,
+        Prisma.JsonValue
+      >;
+      const changed = await this.database.client.modelRun.updateMany({
+        where: {
+          id: run.id,
+          status: { in: ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'] },
+        },
+        data: {
+          completedAt: now,
+          executionResult: {
+            ...prior,
+            dispatched: Boolean(run.startedAt),
+            failureCode: 'EXECUTION_INTERRUPTED',
+            recoveryRequired: Boolean(run.startedAt),
+          },
+          status: ModelRunStatus.FAILED,
+        },
+      });
+      if (changed.count && !run.startedAt)
+        await this.billing.releaseForRun(run.id, 'interrupted_before_dispatch');
+      if (changed.count) await this.updateGroupStatus(run.requestGroupId);
+    }
+    return stale.length;
+  }
+
   public start(plan: RunExecutionPlan): void {
     if (this.active.has(plan.runId)) return;
     const controller = new AbortController();
@@ -84,6 +159,14 @@ export class ConversationExecutionService implements OnModuleDestroy {
       await running.done;
       return;
     }
+    const identity = await this.database.client.modelRun.findFirst({
+      where: { id: runId, requestGroupId: groupId },
+      include: {
+        model: { select: { modelKey: true } },
+        provider: { select: { key: true } },
+        turn: { select: { conversationId: true, id: true } },
+      },
+    });
     const changed = await this.database.client.modelRun.updateMany({
       where: {
         id: runId,
@@ -102,11 +185,76 @@ export class ConversationExecutionService implements OnModuleDestroy {
     });
     if (!changed.count) return;
     await this.billing.releaseForRun(runId, 'cancelled_before_execution');
+    const siblings = await this.database.client.modelRun.findMany({
+      where: { requestGroupId: groupId },
+      select: { status: true },
+    });
+    const groupStatus = siblings.some((sibling) =>
+      ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'].includes(sibling.status),
+    )
+      ? RequestGroupStatus.RUNNING
+      : siblings.some((sibling) => sibling.status === ModelRunStatus.COMPLETED)
+        ? siblings.some((sibling) =>
+            (
+              [ModelRunStatus.FAILED, ModelRunStatus.CANCELLED] as string[]
+            ).includes(sibling.status),
+          )
+          ? RequestGroupStatus.PARTIAL
+          : RequestGroupStatus.COMPLETED
+        : siblings.some((sibling) => sibling.status === ModelRunStatus.FAILED)
+          ? RequestGroupStatus.FAILED
+          : RequestGroupStatus.CANCELLED;
     await this.database.client.requestGroup.update({
       where: { id: groupId },
-      data: { status: RequestGroupStatus.CANCELLED },
+      data: { status: groupStatus },
     });
-    this.events.publish(groupId, 'run.status', { runId, status: 'cancelled' });
+    this.events.publish(groupId, 'run.status', {
+      runId,
+      status: 'cancelled',
+      ...(identity
+        ? {
+            conversationId: identity.turn.conversationId,
+            turnId: identity.turn.id,
+            requestGroupId: groupId,
+            provider: identity.provider.key,
+            model: identity.model.modelKey,
+            modelKey: identity.model.modelKey,
+          }
+        : {}),
+    });
+  }
+
+  private async updateGroupStatus(groupId: string): Promise<void> {
+    const [group, runs] = await Promise.all([
+      this.database.client.requestGroup.findUniqueOrThrow({
+        where: { id: groupId },
+        select: { mode: true },
+      }),
+      this.database.client.modelRun.findMany({
+        where: { requestGroupId: groupId },
+        select: { status: true },
+      }),
+    ]);
+    const status = runs.some((run) =>
+      ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'].includes(run.status),
+    )
+      ? RequestGroupStatus.RUNNING
+      : runs.some((run) => run.status === ModelRunStatus.COMPLETED)
+        ? group.mode === ConversationMode.SINGLE ||
+          !runs.some(
+            (run) =>
+              run.status === ModelRunStatus.FAILED ||
+              run.status === ModelRunStatus.CANCELLED,
+          )
+          ? RequestGroupStatus.COMPLETED
+          : RequestGroupStatus.PARTIAL
+        : runs.some((run) => run.status === ModelRunStatus.FAILED)
+          ? RequestGroupStatus.FAILED
+          : RequestGroupStatus.CANCELLED;
+    await this.database.client.requestGroup.update({
+      where: { id: groupId },
+      data: { status },
+    });
   }
 
   private async execute(
@@ -124,6 +272,34 @@ export class ConversationExecutionService implements OnModuleDestroy {
     let dispatched = false;
     let claimed = false;
     let billingState = 'not_started';
+    let billingFailure: string | undefined;
+    let persistedContentLength = 0;
+    let lastPartialPersistedAt = 0;
+    const persistPartial = async (force = false): Promise<void> => {
+      const now = Date.now();
+      if (
+        content.length === persistedContentLength ||
+        (!force &&
+          content.length - persistedContentLength <
+            ConversationExecutionService.PARTIAL_PERSIST_BYTES &&
+          now - lastPartialPersistedAt <
+            ConversationExecutionService.PARTIAL_PERSIST_MS)
+      )
+        return;
+      await this.database.client.modelRun.updateMany({
+        where: { id: plan.runId, status: ModelRunStatus.RUNNING },
+        data: {
+          executionResult: {
+            model: plan.request.modelKey,
+            partialOutput: content,
+            provider: plan.request.provider,
+            streaming: true,
+          },
+        },
+      });
+      persistedContentLength = content.length;
+      lastPartialPersistedAt = now;
+    };
     try {
       const started = await this.database.client.modelRun.updateMany({
         where: {
@@ -135,10 +311,14 @@ export class ConversationExecutionService implements OnModuleDestroy {
       if (!started.count) return;
       claimed = true;
       this.events.publish(plan.groupId, 'run.status', {
+        conversationId: plan.conversationId,
+        turnId: plan.turnId,
+        requestGroupId: plan.groupId,
         runId: plan.runId,
         status: 'running',
         provider: plan.request.provider,
         model: plan.request.modelKey,
+        modelKey: plan.request.modelKey,
         routingMode: plan.routing?.mode ?? 'manual',
       });
       try {
@@ -177,8 +357,15 @@ export class ConversationExecutionService implements OnModuleDestroy {
               )
                 throw new ProviderExecutionError('OUTPUT_LIMIT_EXCEEDED');
               content += event.text;
+              await persistPartial();
               this.events.publish(plan.groupId, 'content.delta', {
+                conversationId: plan.conversationId,
+                turnId: plan.turnId,
                 delta: event.text,
+                model: plan.request.modelKey,
+                modelKey: plan.request.modelKey,
+                provider: plan.request.provider,
+                requestGroupId: plan.groupId,
                 runId: plan.runId,
               });
               break;
@@ -256,8 +443,17 @@ export class ConversationExecutionService implements OnModuleDestroy {
           await this.billing.releaseForRun(plan.runId, 'no_provider_execution');
           billingState = 'released';
         } else billingState = 'reconciliation_required';
-      } catch {
+      } catch (error) {
         billingState = 'reconciliation_required';
+        billingFailure =
+          error instanceof Prisma.PrismaClientKnownRequestError
+            ? error.code
+            : typeof error === 'object' &&
+                error !== null &&
+                'code' in error &&
+                typeof (error as { code?: unknown }).code === 'string'
+              ? (error as { code: string }).code
+              : 'BILLING_OPERATION_FAILED';
         failureCode = failureCode ?? 'BILLING_RECONCILIATION_REQUIRED';
       }
       const status =
@@ -267,10 +463,12 @@ export class ConversationExecutionService implements OnModuleDestroy {
             ? ModelRunStatus.FAILED
             : ModelRunStatus.COMPLETED;
       const latencyMs = Math.round(performance.now() - startedAt);
+      await persistPartial(true);
       let nextPlan: RunExecutionPlan | undefined;
       const executionResult: Record<string, Prisma.InputJsonValue> = {
         provider: plan.request.provider,
         model: plan.request.modelKey,
+        modelKey: plan.request.modelKey,
         ...(plan.routing
           ? {
               selectedMode: plan.routing.mode,
@@ -288,6 +486,7 @@ export class ConversationExecutionService implements OnModuleDestroy {
         latencyMs,
         dispatched,
         billingState,
+        ...(billingFailure ? { billingFailure } : {}),
         usageComplete:
           usageFinal && inputTokens !== undefined && outputTokens !== undefined,
         ...(inputTokens === undefined ? {} : { inputTokens }),
@@ -432,14 +631,22 @@ export class ConversationExecutionService implements OnModuleDestroy {
           ['PENDING', 'QUEUED', 'RESERVED', 'RUNNING'].includes(run.status),
         )
           ? RequestGroupStatus.RUNNING
-          : runs.some((run) => run.status === ModelRunStatus.COMPLETED) &&
-              plan.routing
-            ? RequestGroupStatus.COMPLETED
+          : runs.some((run) => run.status === ModelRunStatus.COMPLETED)
+            ? plan.mode === ConversationMode.SINGLE
+              ? RequestGroupStatus.COMPLETED
+              : runs.some((run) =>
+                    (
+                      [
+                        ModelRunStatus.FAILED,
+                        ModelRunStatus.CANCELLED,
+                      ] as string[]
+                    ).includes(run.status),
+                  )
+                ? RequestGroupStatus.PARTIAL
+                : RequestGroupStatus.COMPLETED
             : runs.some((run) => run.status === ModelRunStatus.FAILED)
               ? RequestGroupStatus.FAILED
-              : runs.some((run) => run.status === ModelRunStatus.CANCELLED)
-                ? RequestGroupStatus.CANCELLED
-                : RequestGroupStatus.COMPLETED;
+              : RequestGroupStatus.CANCELLED;
         await transaction.requestGroup.update({
           where: { id: plan.groupId },
           data: { status: groupStatus },
@@ -462,10 +669,14 @@ export class ConversationExecutionService implements OnModuleDestroy {
           this.aliases.get(plan.runId) ?? plan.runId,
         );
         this.events.publish(plan.groupId, 'fallback.started', {
+          conversationId: plan.conversationId,
+          turnId: plan.turnId,
+          requestGroupId: plan.groupId,
           previousRunId: plan.runId,
           runId: next.runId,
           provider: next.request.provider,
           model: next.request.modelKey,
+          modelKey: next.request.modelKey,
           reason: failureCode,
           routingMode: next.routing!.mode,
         });
@@ -503,7 +714,13 @@ export class ConversationExecutionService implements OnModuleDestroy {
             data: { status: signal.aborted ? 'CANCELLED' : 'FAILED' },
           });
           this.events.publish(plan.groupId, 'run.error', {
+            conversationId: plan.conversationId,
+            turnId: plan.turnId,
             runId: next.runId,
+            requestGroupId: plan.groupId,
+            provider: next.request.provider,
+            model: next.request.modelKey,
+            modelKey: next.request.modelKey,
             code: signal.aborted ? 'CANCELLED' : 'RESERVATION_FAILED',
             message: 'Fallback could not start',
           });
@@ -516,12 +733,24 @@ export class ConversationExecutionService implements OnModuleDestroy {
           plan.request.modelKey,
         );
         this.events.publish(plan.groupId, 'run.error', {
+          conversationId: plan.conversationId,
+          turnId: plan.turnId,
           code: failureCode!,
           message: 'Generation could not complete',
+          model: plan.request.modelKey,
+          modelKey: plan.request.modelKey,
+          provider: plan.request.provider,
+          requestGroupId: plan.groupId,
           runId: plan.runId,
         });
       } else
         this.events.publish(plan.groupId, 'run.status', {
+          conversationId: plan.conversationId,
+          turnId: plan.turnId,
+          model: plan.request.modelKey,
+          modelKey: plan.request.modelKey,
+          provider: plan.request.provider,
+          requestGroupId: plan.groupId,
           runId: plan.runId,
           status: status.toLowerCase(),
           ...(finishReason && !failureCode ? { finishReason } : {}),
@@ -535,8 +764,14 @@ export class ConversationExecutionService implements OnModuleDestroy {
           plan.request.modelKey,
         );
       this.events.publish(plan.groupId, 'run.error', {
+        conversationId: plan.conversationId,
+        turnId: plan.turnId,
         code: 'PERSISTENCE_FAILED',
         message: 'Run state could not be saved',
+        model: plan.request.modelKey,
+        modelKey: plan.request.modelKey,
+        provider: plan.request.provider,
+        requestGroupId: plan.groupId,
         runId: plan.runId,
       });
     }

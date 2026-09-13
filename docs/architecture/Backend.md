@@ -55,6 +55,39 @@ streaming events and supports cancellation; it has no provider credential or
 SDK dependency. This deliberately exercises the same provider-neutral API/SSE
 boundary that the Router client will use when real adapters are enabled.
 
+## Streaming lifecycle and recovery
+
+Client-visible events are normalized at NestJS and carry `conversationId`,
+`turnId`, `requestGroupId`, `runId`, provider, model key, event type, a global
+SSE cursor, and a per-run sequence. The cursor is sent as the SSE `id`; clients
+reconnect with `Last-Event-ID` (or the `after` cursor). The process-local hub
+retains at most 500 events per request group for short reconnects. It is not a
+source of record: an expired cursor or API restart emits a reset signal and the
+browser reconstructs runs, responses, usage, selection, and terminal state from
+PostgreSQL before accepting subsequent events.
+
+Generation persists bounded, normalized partial text while it is streaming.
+Partial text remains visible after a timeout, cancellation, protocol failure,
+or provider disconnect, but no partial run is selectable and it never receives
+a successful terminal state. A normal completion, max-output completion, timeout,
+cancellation, and truncated/protocol stream remain distinct normalized results.
+The first terminal transition wins; later content or terminal signals are ignored
+by the execution loop and duplicate replay frames are suppressed by cursor.
+
+Closing an SSE connection never cancels provider work. The frontend makes at
+most four bounded-backoff reconnect attempts, preserving each run card and its
+cursor independently from other request groups. Compare children are isolated:
+one child terminal state never closes or cancels its siblings. Per-run cancellation
+only aborts that run; group cancellation requests all nonterminal children and is
+idempotent.
+
+On a process restart, completed runs are rendered from PostgreSQL and are never
+restarted. Runs older than five minutes which were left pending/running are marked
+`EXECUTION_INTERRUPTED`; undispatched reservations are released, while dispatched
+reservations retain explicit reconciliation evidence for [[Credits-Billing]]
+Phase 5. Redis/distributed stream ownership and cross-replica fanout remain
+deferred to Phase 8.
+
 ## Related notes
 
 [[System-Architecture]] · [[ADR-001-Monorepo]] · [[Testing]] · [[Docker]]

@@ -6,7 +6,7 @@ from typing import Any, cast
 
 import httpx
 
-from app.providers.base import ProviderTransportError, provider_transport_error
+from app.providers.base import SSE_DONE_EVENT, ProviderTransportError, provider_transport_error
 
 
 class HttpTransport:
@@ -22,7 +22,11 @@ class HttpTransport:
                 return cast(dict[str, Any], response.json())
         except httpx.HTTPStatusError as error:
             raise provider_transport_error(
-                error.response.status_code, error.response.content, headers, body
+                error.response.status_code,
+                error.response.content,
+                headers,
+                body,
+                dict(error.response.headers),
             ) from error
         except httpx.TimeoutException as error:
             raise TimeoutError("Provider timed out") from error
@@ -37,7 +41,15 @@ class HttpTransport:
                 timeout=90, follow_redirects=False, trust_env=False
             ) as client:
                 async with client.stream("POST", url, headers=headers, json=body) as response:
-                    response.raise_for_status()
+                    if response.is_error:
+                        # Streaming responses have not been read when an HTTP status
+                        # error occurs. Read the bounded error body before normalizing
+                        # it; accessing ``response.content`` before this raises
+                        # httpx.ResponseNotRead and used to become a protocol failure.
+                        content = await response.aread()
+                        raise provider_transport_error(
+                            response.status_code, content, headers, body, dict(response.headers)
+                        )
                     if "text/event-stream" not in response.headers.get("content-type", ""):
                         raise ValueError("Invalid provider stream")
                     buffer = b""
@@ -53,14 +65,20 @@ class HttpTransport:
                                 for line in frame.split(b"\n")
                                 if line.startswith(b"data:")
                             )
-                            if data and data != b"[DONE]":
+                            if data == b"[DONE]":
+                                yield {SSE_DONE_EVENT: True}
+                            elif data:
                                 value = json.loads(data)
                                 if not isinstance(value, dict):
                                     raise ValueError("Invalid provider event")
                                 yield value
         except httpx.HTTPStatusError as error:
             raise provider_transport_error(
-                error.response.status_code, error.response.content, headers, body
+                error.response.status_code,
+                error.response.content,
+                headers,
+                body,
+                dict(error.response.headers),
             ) from error
         except httpx.TimeoutException as error:
             raise TimeoutError("Provider timed out") from error

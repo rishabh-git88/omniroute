@@ -1,0 +1,30 @@
+{
+  "models": [
+    {
+      "provider": "gemini",
+      "modelKey": "gemini:gemini-3.5-flash",
+      "providerModelId": "gemini-3.5-flash",
+      "displayName": "Gemini 3.5 Flash",
+      "registryVersion": 1,
+      "capabilities": {
+        "modalities": { "input": ["text"], "output": ["text"] },
+        "files": false,
+        "images": false,
+        "search": false,
+        "tools": false,
+        "contextWindow": 1048576,
+        "maxOutputTokens": 65536
+      },
+      "pricing": {
+        "currency": "USD",
+        "inputPerMillionTokens": "1.50000000",
+        "outputPerMillionTokens": "9.00000000",
+        "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing",
+        "reviewedAt": "2026-09-12T00:00:00Z"
+      },
+      "pricingVersion": "gemini-3.5-flash-standard-2026-09-12",
+      "effectiveAt": "2026-09-12T00:00:00Z",
+      "regionConstraints": []
+    }
+  ]
+}

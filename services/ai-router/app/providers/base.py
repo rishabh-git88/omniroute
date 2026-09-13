@@ -26,6 +26,12 @@ class ProviderTransport(Protocol):
     ) -> AsyncGenerator[dict[str, Any], None]: ...
 
 
+# This marker is created locally by a transport after it consumes an SSE
+# ``[DONE]`` record. It is never an upstream payload and never crosses the
+# provider-neutral public contract.
+SSE_DONE_EVENT = "_omniroute_sse_done"
+
+
 class UrllibTransport:
     """Small server-only transport; values are never logged, including authorization headers."""
 
@@ -46,7 +52,9 @@ class UrllibTransport:
             with urlopen(request, timeout=60) as response:  # noqa: S310 -- adapter URLs are constants
                 return cast(dict[str, Any], json.loads(response.read()))
         except HTTPError as error:
-            raise provider_transport_error(error.code, error.read(), headers, body) from error
+            raise provider_transport_error(
+                error.code, error.read(), headers, body, dict(error.headers.items())
+            ) from error
         except URLError as error:
             raise ProviderTransportError(None, "Provider network request failed") from error
 
@@ -57,14 +65,18 @@ class UrllibTransport:
         try:
             response = await asyncio.to_thread(urlopen, request, timeout=90)  # noqa: S310
         except HTTPError as error:
-            raise provider_transport_error(error.code, error.read(), headers, body) from error
+            raise provider_transport_error(
+                error.code, error.read(), headers, body, dict(error.headers.items())
+            ) from error
         except URLError as error:
             raise ProviderTransportError(None, "Provider network request failed") from error
         try:
             while line := await asyncio.to_thread(response.readline):
                 if line.startswith(b"data:"):
                     payload = line.removeprefix(b"data:").strip()
-                    if payload and payload != b"[DONE]":
+                    if payload == b"[DONE]":
+                        yield {SSE_DONE_EVENT: True}
+                    elif payload:
                         yield json.loads(payload)
         finally:
             response.close()
@@ -79,9 +91,11 @@ class ProviderErrorDiagnostic:
     provider_type: str | None = None
     provider_status: str | None = None
     message: str | None = None
+    retry_after_seconds: float | None = None
+    event_shape: dict[str, object] | None = None
 
 
-@dataclass(frozen=True)
+@dataclass
 class ProviderTransportError(Exception):
     status_code: int | None
     safe_message: str
@@ -130,6 +144,7 @@ def provider_transport_error(
     response_body: bytes,
     headers: dict[str, str],
     request_body: dict[str, Any],
+    response_headers: dict[str, str] | None = None,
 ) -> ProviderTransportError:
     """Extract a deliberately small, redacted diagnostic from an HTTP error body."""
 
@@ -141,12 +156,25 @@ def provider_transport_error(
     detail = payload.get("error", payload) if isinstance(payload, dict) else {}
     if not isinstance(detail, dict):
         detail = {}
+    retry_after: float | None = None
+    if response_headers:
+        raw_retry_after = next(
+            (value for key, value in response_headers.items() if key.lower() == "retry-after"), None
+        )
+        if raw_retry_after:
+            try:
+                retry_after = max(0.0, float(raw_retry_after))
+            except ValueError:
+                # HTTP-date Retry-After values are intentionally not guessed. The
+                # evaluator will use its bounded backoff instead.
+                pass
     diagnostic = ProviderErrorDiagnostic(
         http_status=status_code,
         provider_code=detail.get("code") if isinstance(detail.get("code"), (str, int)) else None,
         provider_type=detail.get("type") if isinstance(detail.get("type"), str) else None,
         provider_status=detail.get("status") if isinstance(detail.get("status"), str) else None,
         message=_sanitize_message(detail.get("message"), sensitive),
+        retry_after_seconds=retry_after,
     )
     return ProviderTransportError(status_code, "Provider request failed", diagnostic)
 
