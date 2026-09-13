@@ -144,7 +144,12 @@ export class ConversationExecutionService
   public start(plan: RunExecutionPlan): void {
     if (this.active.has(plan.runId)) return;
     const controller = new AbortController();
-    const done = this.execute(plan, controller.signal).finally(() => {
+    // Register before execute reaches its first await. A command can otherwise
+    // observe RUNNING in the small dispatch-boundary window yet have nothing
+    // to abort, leaving a browser cancellation detached from the provider.
+    let done: Promise<void> = Promise.resolve();
+    this.active.set(plan.runId, { controller, done });
+    done = this.execute(plan, controller.signal).finally(() => {
       this.active.delete(plan.runId);
       for (const [id, root] of this.aliases)
         if (root === plan.runId) this.aliases.delete(id);
@@ -290,6 +295,8 @@ export class ConversationExecutionService
         where: { id: plan.runId, status: ModelRunStatus.RUNNING },
         data: {
           executionResult: {
+            dispatched: true,
+            billingState: 'reserved',
             model: plan.request.modelKey,
             partialOutput: content,
             provider: plan.request.provider,
@@ -334,6 +341,20 @@ export class ConversationExecutionService
           ...plan.request,
           context,
           maxOutputTokens: budget.maxOutputTokens,
+        });
+        // This durable boundary is written before the upstream socket opens.
+        // Recovery can therefore release only work that was certainly never
+        // dispatched and never guesses that an upstream call was free.
+        await this.database.client.modelRun.update({
+          where: { id: plan.runId },
+          data: {
+            executionResult: {
+              dispatched: true,
+              billingState: 'reserved',
+              model: plan.request.modelKey,
+              provider: plan.request.provider,
+            },
+          },
         });
         dispatched = true;
         for await (const event of this.provider.streamChat(request, signal)) {
@@ -454,7 +475,9 @@ export class ConversationExecutionService
                 typeof (error as { code?: unknown }).code === 'string'
               ? (error as { code: string }).code
               : 'BILLING_OPERATION_FAILED';
-        failureCode = failureCode ?? 'BILLING_RECONCILIATION_REQUIRED';
+        // Provider execution is already terminal. Keep its response/result
+        // separate from an uncertain financial reconciliation; a recovery
+        // operation can safely retry the durable reservation later.
       }
       const status =
         failureCode === 'CANCELLED'

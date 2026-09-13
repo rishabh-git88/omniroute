@@ -31,4 +31,17 @@ describe('CreditBillingService', () => {
   it('rounds a non-zero fractional credit up rather than losing it', () => {
     expect(billing.creditsForCost(new Prisma.Decimal('0.000000001'))).toBe(1n);
   });
+
+  it('treats explicit zero pricing as a valid zero-cost settlement', () => {
+    const cost = billing.cost(
+      {
+        currency: 'USD',
+        inputPerMillionTokens: '0',
+        outputPerMillionTokens: '0',
+      } as Prisma.JsonValue,
+      { inputTokens: 123n, outputTokens: 456n },
+    );
+    expect(cost.toFixed(8)).toBe('0.00000000');
+    expect(billing.creditsForCost(cost)).toBe(0n);
+  });
 });

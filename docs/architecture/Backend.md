@@ -84,8 +84,8 @@ idempotent.
 On a process restart, completed runs are rendered from PostgreSQL and are never
 restarted. Runs older than five minutes which were left pending/running are marked
 `EXECUTION_INTERRUPTED`; undispatched reservations are released, while dispatched
-reservations retain explicit reconciliation evidence for [[Credits-Billing]]
-Phase 5. Redis/distributed stream ownership and cross-replica fanout remain
+reservations retain explicit reconciliation evidence for the bounded [[Credits-Billing]]
+operator reconciler. Redis/distributed stream ownership and cross-replica fanout remain
 deferred to Phase 8.
 
 ## Related notes

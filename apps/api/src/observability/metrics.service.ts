@@ -23,6 +23,12 @@ export class MetricsService {
       description: 'Platform credits settled from normalized provider usage',
     },
   );
+  private readonly creditReconciled = meter.createCounter(
+    'omniroute.credit.reconciliation',
+    {
+      description: 'Bounded durable credit reconciliation outcomes',
+    },
+  );
   private readonly providerErrors = meter.createCounter(
     'omniroute.provider.errors',
     {
@@ -54,6 +60,12 @@ export class MetricsService {
 
   public recordCreditSettlement(credits: bigint): void {
     this.creditSettled.add(this.metricValue(credits));
+  }
+
+  public recordCreditReconciliation(
+    outcome: 'failed' | 'pending' | 'released' | 'settled',
+  ): void {
+    this.creditReconciled.add(1, { outcome });
   }
 
   public recordProviderError(provider: string, modelKey: string): void {

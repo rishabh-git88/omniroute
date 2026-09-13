@@ -76,6 +76,50 @@ remainder. Cancellation and pre-output failure release the full reservation;
 retrying a terminal reconciliation returns the settled wallet without a second
 ledger movement.
 
+## Production reconciliation and interruption recovery
+
+`CreditReservation` has one terminal lifecycle: `PENDING` means the exact
+maximum charge is reserved, `SETTLED` means actual normalized usage was charged,
+and `RELEASED` means the full reservation was returned. The append-only ledger
+contains a reservation movement and then exactly one terminal charge/release
+combination. Database uniqueness on wallet/idempotency keys and serializable
+wallet-row locking make repeated reserve, settle, release, and reconciliation
+calls converge without double charging or refunding.
+
+NestJS writes `dispatched: true` durably before opening an upstream provider
+stream. A stale reservation that was never dispatched is released. A dispatched
+run with complete normalized input/output usage is settled from the run's exact
+immutable registry entry. A dispatched run with missing trustworthy usage stays
+`reconciliation_required`: it is neither refunded nor treated as free. A
+completed response may therefore be visible while its accounting remains
+pending. If calculated actual credits exceed the maximum reservation, the wallet
+is never overdrafted; settlement stays pending for operator review.
+
+Every final usage event stores the provider/model, registry version, pricing
+version, and pricing JSON used for the charge. A later registry revision cannot
+change the cost of an old run. Explicit zero prices are valid: usage evidence is
+recorded, no reservation is needed, and no synthetic charge is created.
+
+Compare 3, Try Another AI, and fallback runs each own a separate `ModelRun` and
+reservation. Compare setup reserves every child before dispatching any child;
+if a child cannot reserve, no provider call starts and earlier reservations are
+released. Fallback attempts retain their own provider/run/usage evidence and
+never reuse or charge the failed attempt's reservation.
+
+The guarded operator command scans at most 200 stale reservations per
+invocation and prints only safe counts. It does not call providers or read
+prompts:
+
+```sh
+CREDIT_RECONCILE_CONFIRM=reconcile-stale-credit-reservations \
+CREDIT_RECONCILE_BATCH=50 \
+DATABASE_URL='…' \
+pnpm --filter @omniroute/api credits:reconcile
+```
+
+It is safe to repeat. Scheduling and alert policy, plus a manual policy for a
+provider charge proven to exceed its reservation, remain operating work.
+
 ## Related notes
 
 [[API-Design]] · [[Security]] · [[Testing]] · [[Observability]]

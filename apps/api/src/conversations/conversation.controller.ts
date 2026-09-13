@@ -327,8 +327,13 @@ export class ConversationStreamController {
         pending.delete(String(event.data.previousRunId));
         pending.add(String(event.data.runId));
       }
-      if (isTerminal(event)) pending.delete(String(event.data.runId));
-      if (pending.size === 0) close();
+      if (isTerminal(event)) {
+        pending.delete(String(event.data.runId));
+        // A completed group may replay a historical running event before its
+        // terminal event. Only a terminal observation is allowed to close an
+        // already-terminal stream, otherwise that terminal state is lost.
+        if (pending.size === 0) close();
+      }
     };
     unsubscribe = this.events.subscribe(groupId, (event) => {
       apply(event);
