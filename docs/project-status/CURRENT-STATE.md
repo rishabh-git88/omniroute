@@ -18,6 +18,16 @@ verification includes deterministic unit/API/database suites and the built
 Chromium browser boundary test; full external OAuth, S3, embedding, and live
 provider acceptance remains an external release gate.
 
+## Phase 8 operational update
+
+Redis now has a bounded coordination role: authenticated execution/file limits,
+transient provider circuit state, and short run-dispatch leases. PostgreSQL
+remains durable truth for conversations, runs, responses, credits, files, and
+recovery. Production requires a server-only Redis URL; a Redis outage rejects
+new protected cost-bearing writes while durable reads and reconciliation remain
+available. External multi-replica Render, Key Value, OAuth, S3, embedding, and
+live-provider acceptance remains required before a release claim.
+
 ## Phase 0 production-baseline update
 
 Date: 2026-09-12. The current deployment architecture is Vercel at

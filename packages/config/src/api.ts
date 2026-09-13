@@ -83,6 +83,18 @@ const apiEnvironmentSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
   REDIS_URL: z.url().default('redis://localhost:6379'),
+  RATE_LIMIT_EXECUTIONS_PER_MINUTE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(1000)
+    .default(12),
+  RATE_LIMIT_FILE_MUTATIONS_PER_MINUTE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(1000)
+    .default(20),
 });
 
 const authEnvironmentSchema = z
@@ -206,6 +218,7 @@ export function parseApiEnvironment(source: NodeJS.ProcessEnv): ApiEnvironment {
       'AI_ROUTER_URL',
     ]);
   if (result.data.NODE_ENV === 'production') {
+    if (!source.REDIS_URL) throw new EnvironmentValidationError(['REDIS_URL']);
     if (result.data.FILES_STORAGE_DRIVER !== 's3')
       throw new EnvironmentValidationError(['FILES_STORAGE_DRIVER']);
     if (!result.data.FILES_S3_BUCKET || !result.data.FILES_S3_REGION)

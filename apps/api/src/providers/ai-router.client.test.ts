@@ -171,6 +171,7 @@ describe('authenticated router client', () => {
     vi.stubEnv('FILES_S3_BUCKET', 'test-private-file-bucket');
     vi.stubEnv('FILES_S3_REGION', 'ap-southeast-1');
     vi.stubEnv('EMBEDDING_PROVIDER', 'disabled');
+    vi.stubEnv('REDIS_URL', 'rediss://cache.example.internal:6380');
     vi.stubEnv('AI_EXECUTION_PROVIDER', undefined);
     expect(executionProvider()).toBeUndefined();
     vi.stubEnv('AI_EXECUTION_PROVIDER', 'mock');

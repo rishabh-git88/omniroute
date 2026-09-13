@@ -85,8 +85,22 @@ On a process restart, completed runs are rendered from PostgreSQL and are never
 restarted. Runs older than five minutes which were left pending/running are marked
 `EXECUTION_INTERRUPTED`; undispatched reservations are released, while dispatched
 reservations retain explicit reconciliation evidence for the bounded [[Credits-Billing]]
-operator reconciler. Redis/distributed stream ownership and cross-replica fanout remain
-deferred to Phase 8.
+operator reconciler.
+
+## Distributed coordination
+
+PostgreSQL remains the authority for every run, response, reservation, and terminal
+state. Phase 8 uses Redis only for bounded coordination: per-workspace/user action
+limits, expiring provider circuit state, and short execution ownership leases. A lease
+prevents two API replicas from dispatching the same durable `ModelRun`; it does not
+assert that a provider request completed. If Redis is unavailable, protected
+cost-bearing commands fail safely while durable reads and recovery continue through
+PostgreSQL.
+
+The existing local stream buffer still optimizes same-instance reconnects. A reconnect
+on another replica reconstructs durable state from PostgreSQL and never starts another
+provider call. Cross-replica live event fanout is intentionally deferred until a
+measured deployment need justifies a bounded Redis pub/sub layer.
 
 ## Related notes
 

@@ -29,6 +29,11 @@ import { ProviderExecutionError } from '../providers/ai-router.client.js';
 import { MetricsService } from '../observability/metrics.service.js';
 import { CreditBillingService } from '../usage/credit-billing.service.js';
 import { StreamEventHub } from './stream-event-hub.js';
+import {
+  CoordinationService,
+  CoordinationUnavailableError,
+} from '../coordination/coordination.service.js';
+import { ProviderCircuitService } from '../coordination/provider-circuit.service.js';
 
 export interface RunExecutionPlan {
   conversationId: string;
@@ -68,6 +73,8 @@ export class ConversationExecutionService
     private readonly events: StreamEventHub,
     private readonly metrics: MetricsService,
     private readonly provider: ExecutionGateway,
+    private readonly coordination: CoordinationService,
+    private readonly circuits: ProviderCircuitService,
   ) {}
 
   public async onModuleDestroy(): Promise<void> {
@@ -278,6 +285,7 @@ export class ConversationExecutionService
     let claimed = false;
     let billingState = 'not_started';
     let billingFailure: string | undefined;
+    let lease: { key: string; token: string } | null = null;
     let persistedContentLength = 0;
     let lastPartialPersistedAt = 0;
     const persistPartial = async (force = false): Promise<void> => {
@@ -308,6 +316,14 @@ export class ConversationExecutionService
       lastPartialPersistedAt = now;
     };
     try {
+      try {
+        lease = await this.coordination.acquireLease(plan.runId);
+      } catch (error) {
+        if (error instanceof CoordinationUnavailableError)
+          throw new ProviderExecutionError('COORDINATION_UNAVAILABLE');
+        throw error;
+      }
+      if (!lease) return;
       const started = await this.database.client.modelRun.updateMany({
         where: {
           id: plan.runId,
@@ -685,6 +701,21 @@ export class ConversationExecutionService
             : 'failed',
         latencyMs,
       );
+      // Circuit state is advisory and ephemeral. A coordination outage must
+      // never hide a durable execution result or prevent accounting recovery.
+      if (plan.request.provider !== 'fake')
+        await (
+          failureCode
+            ? this.circuits.recordFailure(
+                plan.request.provider,
+                plan.request.modelKey,
+                failureCode,
+              )
+            : this.circuits.recordSuccess(
+                plan.request.provider,
+                plan.request.modelKey,
+              )
+        ).catch(() => undefined);
       if (nextPlan) {
         const next = nextPlan;
         this.aliases.set(
@@ -797,6 +828,8 @@ export class ConversationExecutionService
         requestGroupId: plan.groupId,
         runId: plan.runId,
       });
+    } finally {
+      if (lease) await this.coordination.releaseLease(lease);
     }
   }
 }

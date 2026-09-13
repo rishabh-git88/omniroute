@@ -329,6 +329,13 @@ Files: `apps/web/app/`, `apps/web/proxy.ts`, and shared UI components.
 
 ## R13 — Redis/Valkey and multi-replica safety
 
+Implementation update, 2026-09-13: Redis-backed rate counters, transient
+provider circuit state, and bounded run-dispatch leases are implemented with
+deterministic multi-instance coverage. Redis remains ephemeral; PostgreSQL owns
+all recoverable business and accounting state. R13 remains PARTIAL until the
+managed Render Key Value connectivity, outage behavior, and cross-replica
+deployment behavior are observed in staging.
+
 Implement consuming features, not just a configured URL: authenticated
 cost-incurring request limits, shared ephemeral provider-health/circuit state,
 bounded stream coordination, and any required execution coordination. Define

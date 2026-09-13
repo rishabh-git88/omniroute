@@ -9,6 +9,8 @@ import {
 import { PrismaService } from '../database/prisma.service.js';
 import { AiRouterClient, ProviderExecutionError } from './ai-router.client.js';
 import { MockProvider } from './mock.provider.js';
+import { ProviderCircuitService } from '../coordination/provider-circuit.service.js';
+import { CoordinationUnavailableError } from '../coordination/coordination.service.js';
 
 export function executionProvider():
   | 'fake'
@@ -29,6 +31,7 @@ export class ExecutionGateway {
     private readonly database: PrismaService,
     private readonly router: AiRouterClient,
     private readonly mock: MockProvider,
+    private readonly circuits: ProviderCircuitService,
   ) {}
 
   public async *streamChat(
@@ -38,6 +41,16 @@ export class ExecutionGateway {
     if (signal.aborted) throw new ProviderExecutionError('CANCELLED');
     if (!executionEnabled(request.provider))
       throw new ProviderExecutionError('PROVIDER_DISABLED');
+    if (request.provider !== 'fake') {
+      try {
+        if (!(await this.circuits.allow(request.provider, request.modelKey)))
+          throw new ProviderExecutionError('PROVIDER_UNAVAILABLE');
+      } catch (error) {
+        if (error instanceof CoordinationUnavailableError)
+          throw new ProviderExecutionError('COORDINATION_UNAVAILABLE');
+        throw error;
+      }
+    }
     if (request.provider === 'fake') {
       const cancel = () => {
         void this.mock.cancel(request.runId);

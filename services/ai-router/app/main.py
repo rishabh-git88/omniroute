@@ -1,3 +1,4 @@
+import os
 from collections.abc import AsyncIterator
 from contextlib import aclosing
 from secrets import compare_digest
@@ -35,6 +36,13 @@ app = FastAPI(
     title="OmniRoute AI Router",
     version="0.1.0",
 )
+
+
+@app.on_event("startup")
+async def validate_internal_service_configuration() -> None:
+    """Production execution must never rely on an unprotected Render URL."""
+    if os.getenv("NODE_ENV") == "production" and len(settings.internal_token) < 32:
+        raise RuntimeError("AI_ROUTER_INTERNAL_TOKEN is required in production")
 
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])

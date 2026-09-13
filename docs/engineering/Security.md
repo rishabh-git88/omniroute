@@ -16,6 +16,21 @@ Protect a widened multi-provider data boundary across identity, tenants, prompts
 | cross-tenant access | workspace scope on every query/object key, short signed URLs, deny by default |
 | improper output handling | sanitize Markdown/HTML, sandbox code, validate tools, never execute model text |
 | unbounded consumption | rate/budget/output/file/concurrency limits, reservations, circuit breakers |
+
+## Phase 8 enforcement
+
+Authenticated execution, Try Another AI, and file mutations have a Redis-backed
+workspace-and-user scoped limit. A limit response is HTTP 429 with a bounded
+`Retry-After`; Redis failure returns a safe unavailable condition for these
+cost-bearing writes instead of silently disabling protection. PostgreSQL remains
+the authority for reservations and all financial recovery.
+
+The AI Router accepts provider execution only with the generated internal bearer
+token. Production startup fails if that token is absent; public health endpoints
+do not expose provider credentials or health internals. API logs redact cookies,
+authorization, OAuth query values, and credential-bearing URLs. Browser headers
+deny framing, MIME sniffing, unnecessary browser permissions, and broad referrer
+disclosure.
 | retention mismatch | document provider/app terms, export/delete, deletion-state audit |
 | supply-chain compromise | lockfiles, signed builds, scans, SBOM, minimal images, patch workflow |
 

@@ -40,6 +40,7 @@ describe('parseApiEnvironment', () => {
       FILES_S3_BUCKET: 'private-omniroute-files',
       FILES_S3_REGION: 'ap-southeast-1',
       EMBEDDING_PROVIDER: 'disabled',
+      REDIS_URL: 'rediss://cache.example.internal:6380',
     };
     expect(parseApiEnvironment(base).FILES_STORAGE_DRIVER).toBe('s3');
     expect(() =>
@@ -48,6 +49,11 @@ describe('parseApiEnvironment', () => {
     expect(() =>
       parseApiEnvironment({ ...base, EMBEDDING_PROVIDER: 'deterministic' }),
     ).toThrow('EMBEDDING_PROVIDER');
+    expect(() => {
+      const withoutRedis: Record<string, string> = { ...base };
+      delete withoutRedis.REDIS_URL;
+      parseApiEnvironment(withoutRedis);
+    }).toThrow('REDIS_URL');
   });
 });
 

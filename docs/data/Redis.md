@@ -6,6 +6,23 @@
 
 Redis provides low-latency ephemeral coordination. It is never the sole store for selected branches, terminal model runs, usage, or credit transactions.
 
+## Phase 8 coordination contract
+
+The API uses the namespaced `omniroute:v1:` keyspace only for bounded,
+expiring coordination:
+
+| Key family | TTL | Purpose | Durable fallback |
+| --- | --- | --- | --- |
+| `rate:<action>:<workspace>:<user>` | 60 seconds | authenticated execution and file-mutation limits | reject the protected write if Redis is unavailable |
+| `provider-circuit:<provider>:<model>` | 30–60 seconds | transient provider failure cooldown shared by replicas | health becomes unknown after expiry; registry/runtime checks still apply |
+| `run-lease:<runId>` | 120 seconds | prevent duplicate provider dispatch | PostgreSQL `ModelRun` state and reconciliation remain authoritative |
+
+Values contain only counters, UUID ownership tokens, or bounded failure codes.
+They never contain prompts, responses, credentials, credits, file metadata, or
+ledger state. Redis connection loss does not erase a conversation or a charge.
+Cost-bearing writes fail safely while it is unavailable; reads, durable replay
+reconstruction, and reconciliation continue through PostgreSQL.
+
 ## Responsibilities
 
 - Rate limits and concurrency caps.

@@ -53,6 +53,16 @@ Inputs are instrumented [[Frontend]], [[Backend]], workers, dependencies, and no
 
 Telemetry failure must not corrupt business state. Buffer within bounds, degrade gracefully, and retain enough local correlation to investigate; alert on aged credit reservations and failed object processing.
 
+## Phase 8 operational signals
+
+Alert on sustained HTTP 5xx, database readiness failure, AI Router failures,
+Redis coordination unavailability, provider timeout/rate-limit spikes, stale
+running executions, pending credit reconciliation, and file-processing failure
+or backlog. These are recommended alert categories only; no external alert
+delivery is claimed by the repository. Logs should correlate request, workspace,
+conversation, request group, run, provider, and model using safe identifiers,
+while excluding prompt/document content and credentials.
+
 ## Security considerations
 
 Redact content and credentials, control dashboard access, define telemetry retention, avoid high-cardinality user identifiers, and audit sensitive operational access.
