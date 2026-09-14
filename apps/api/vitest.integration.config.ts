@@ -5,10 +5,9 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.integration.test.ts'],
     // Integration files share one marker-guarded database, and a few fixture
-    // suites deliberately TRUNCATE it. A single fork is required to prevent a
-    // fixture reset from racing an in-flight execution transaction.
+    // suites deliberately TRUNCATE it. File parallelism and worker concurrency are disabled so
+    // fixture reset cannot race in-flight  transaction.
     pool: 'forks',
-    singleFork: true,
     fileParallelism: false,
     maxWorkers: 1,
     maxConcurrency: 1,
