@@ -23,6 +23,7 @@ api=$(docker run -d --network none \
   -e AUTH_SESSION_SECRET=synthetic-container-test-secret-32-characters \
   -e GOOGLE_CLIENT_ID=synthetic-client -e GOOGLE_CLIENT_SECRET=synthetic-secret \
   -e DATABASE_URL=postgresql://unused:unused@127.0.0.1:1/unavailable \
+  -e REDIS_URL=redis://127.0.0.1:1 \
   -e FILES_STORAGE_DRIVER=supabase -e SUPABASE_STORAGE_BUCKET=synthetic-private-files \
   -e SUPABASE_SERVICE_ROLE_KEY=synthetic-service-role-key -e SUPABASE_URL=https://supabase.ci.invalid \
   -e EMBEDDING_PROVIDER=disabled \
