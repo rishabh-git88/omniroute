@@ -109,7 +109,18 @@ try {
     console.log('Core-to-memory upgrade verified with retained fixture data.');
   } else {
     run('prisma', ['generate', '--config', 'prisma-generate.config.ts']);
-    run('vitest', ['run', '--config', 'vitest.integration.config.ts']);
+    // Every integration file targets the same guarded disposable database and
+    // some intentionally TRUNCATE fixture tables. Keep this command-level so
+    // the release gate remains serial even if Vitest config defaults change.
+    run('vitest', [
+      'run',
+      '--config',
+      'vitest.integration.config.ts',
+      '--no-file-parallelism',
+      '--maxWorkers=1',
+      '--maxConcurrency=1',
+      '--pool=forks',
+    ]);
   }
 } finally {
   await client.end();
