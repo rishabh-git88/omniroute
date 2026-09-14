@@ -10,12 +10,24 @@ import {
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { AUTH_SESSION_COOKIE } from '@omniroute/types';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { AppModule } from '../app.module.js';
 import { createDatabaseClient } from '../database/database-client.js';
 import { verifiedIntegrationUrl } from '../database/integration-safety.js';
 import { MockProvider } from './mock.provider.js';
 import { AiRouterClient } from './ai-router.client.js';
+import {
+  CoordinationService,
+  MemoryCoordinationBackend,
+} from '../coordination/coordination.service.js';
 
 const databaseUrl = await verifiedIntegrationUrl();
 const root = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -40,6 +52,7 @@ const requests: Array<{
 }> = [];
 const disconnected = new Set<string>();
 let mockCalls: ReturnType<typeof vi.spyOn>;
+const coordinationBackend = new MemoryCoordinationBackend();
 
 function port(server: Server): number {
   const address = server.address();
@@ -109,6 +122,33 @@ async function saved(runId: string) {
       requestGroup: { include: { routingDecision: true } },
     },
   });
+}
+
+async function createIsolatedSession(): Promise<void> {
+  const user = await database.user.create({
+    data: {
+      email: `execution-${crypto.randomUUID()}@test.invalid`,
+      wallet: { create: {} },
+    },
+  });
+  await database.workspace.create({
+    data: { name: 'Execution test', ownerId: user.id },
+  });
+  const token = crypto.randomUUID();
+  const session = await database.session.create({
+    data: {
+      userId: user.id,
+      expiresAt: new Date(Date.now() + 3600000),
+      lastSeenAt: new Date(),
+      sessionTokenHash: createHmac('sha256', sessionSecret)
+        .update(`session:${token}`)
+        .digest('hex'),
+    },
+  });
+  cookie = `${AUTH_SESSION_COOKIE}=${token}`;
+  csrf = createHmac('sha256', sessionSecret)
+    .update(`csrf:${session.id}`)
+    .digest('base64url');
 }
 
 describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP adapters', () => {
@@ -281,30 +321,6 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
       GOOGLE_CLIENT_SECRET: 'synthetic-secret',
     }))
       vi.stubEnv(key, value);
-    const user = await database.user.create({
-      data: {
-        email: `execution-${crypto.randomUUID()}@test.invalid`,
-        wallet: { create: {} },
-      },
-    });
-    await database.workspace.create({
-      data: { name: 'Execution test', ownerId: user.id },
-    });
-    const token = crypto.randomUUID();
-    const session = await database.session.create({
-      data: {
-        userId: user.id,
-        expiresAt: new Date(Date.now() + 3600000),
-        lastSeenAt: new Date(),
-        sessionTokenHash: createHmac('sha256', sessionSecret)
-          .update(`session:${token}`)
-          .digest('hex'),
-      },
-    });
-    cookie = `${AUTH_SESSION_COOKIE}=${token}`;
-    csrf = createHmac('sha256', sessionSecret)
-      .update(`csrf:${session.id}`)
-      .digest('base64url');
     const provider = await database.provider.upsert({
       where: { key: 'openai' },
       create: {
@@ -320,7 +336,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
       data: {
         modelKey,
         providerId: provider.id,
-        providerModelId: 'synthetic-http-model',
+        providerModelId: `synthetic-http-model-${crypto.randomUUID()}`,
         displayName: 'HTTP test model',
       },
     });
@@ -363,7 +379,7 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
       const model = await database.model.create({
         data: {
           modelKey: `${key}:routing-fixture-${crypto.randomUUID()}`,
-          providerModelId: 'synthetic-routing-model',
+          providerModelId: `synthetic-routing-model-${crypto.randomUUID()}`,
           displayName: `${key} fixture`,
           providerId: provider.id,
         },
@@ -402,7 +418,12 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
     }
     const module = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      // The real global guard and circuit service remain active. A dedicated
+      // ephemeral backend lets each test begin with no rate/circuit residue.
+      .overrideProvider(CoordinationService)
+      .useValue(new CoordinationService(coordinationBackend))
+      .compile();
     mockCalls = vi.spyOn(module.get(MockProvider), 'streamChat');
     app = module.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
@@ -416,6 +437,11 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
     await app.listen(0, '127.0.0.1');
     origin = await app.getUrl();
   }, 20000);
+
+  beforeEach(async () => {
+    coordinationBackend.clear();
+    await createIsolatedSession();
+  });
 
   afterAll(async () => {
     await app?.close();
@@ -454,7 +480,10 @@ describe('browser HTTP → NestJS → authenticated FastAPI → provider HTTP ad
     });
     expect(requests[0]).toMatchObject({
       authorization: 'Bearer synthetic-provider-key',
-      body: { model: 'synthetic-http-model', max_output_tokens: 512 },
+      body: {
+        model: expect.stringMatching(/^synthetic-http-model-/),
+        max_output_tokens: 512,
+      },
     });
     expect(mockCalls).not.toHaveBeenCalled();
   });

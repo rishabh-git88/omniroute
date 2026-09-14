@@ -39,6 +39,10 @@ export class MemoryCoordinationBackend implements CoordinationBackend {
   >();
 
   public async close(): Promise<void> {}
+  /** Explicit test-harness reset for an injected non-production backend. */
+  public clear(): void {
+    this.values.clear();
+  }
   public async del(key: string): Promise<number> {
     return this.values.delete(key) ? 1 : 0;
   }
