@@ -102,9 +102,19 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
+      # This job deliberately runs the full release build (rather than only
+      # the web package), so the Python ai-router workspace is a required
+      # build dependency as well.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
       - uses: browser-actions/setup-chrome@v1
         id: chrome
       - run: pnpm install --frozen-lockfile
+      - run: uv sync --project services/ai-router --all-groups --frozen
       - name: Build production workspace dependencies and web application
         run: pnpm build
       - name: Run deterministic browser acceptance
