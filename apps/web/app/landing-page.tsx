@@ -3,6 +3,7 @@
 import Link from 'next/link';
 
 import { AuthUnavailable } from './auth-unavailable';
+import { PRODUCT_NAME } from './brand';
 
 export function LandingPage() {
   return (
@@ -10,7 +11,7 @@ export function LandingPage() {
       <nav className="landing-nav" aria-label="Main navigation">
         <Link className="brand brand-dark" href="/">
           <span className="brand-mark">O</span>
-          OmniRoute
+          {PRODUCT_NAME}
         </Link>
         <Link className="nav-sign-in" href="/login">
           Sign in
@@ -24,7 +25,7 @@ export function LandingPage() {
         </p>
         <h1 id="landing-title">Choose the answer, not the provider.</h1>
         <p>
-          Ask naturally. OmniRoute handles the routing underneath, lets you
+          Ask naturally. {PRODUCT_NAME} handles the routing underneath, lets you
           compare when it matters, and keeps the context you chose intact.
         </p>
         <div className="landing-actions">
@@ -40,7 +41,7 @@ export function LandingPage() {
       <section
         className="landing-proof"
         id="how-it-works"
-        aria-label="How OmniRoute works"
+        aria-label={`How ${PRODUCT_NAME} works`}
       >
         <article>
           <span>01</span>

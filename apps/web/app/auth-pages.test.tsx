@@ -32,7 +32,7 @@ describe('public and protected auth presentation', () => {
       auth.status = status;
       const html = renderToStaticMarkup(<WorkspaceOrLanding />);
       expect(html).toContain('Choose the answer, not the provider.');
-      expect(html).not.toContain('Loading OmniRoute');
+      expect(html).not.toContain('Loading OneRoute-AI');
     },
   );
   it('shows a retryable outage rather than session-ended messaging', () => {

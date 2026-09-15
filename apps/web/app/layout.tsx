@@ -3,10 +3,11 @@ import type { ReactNode } from 'react';
 
 import './globals.css';
 import { AuthProvider } from './auth-provider';
+import { PRODUCT_NAME } from './brand';
 
 export const metadata: Metadata = {
   description: 'A provider-neutral multi-LLM conversation workspace.',
-  title: 'OmniRoute',
+  title: PRODUCT_NAME,
 };
 
 export default function RootLayout({

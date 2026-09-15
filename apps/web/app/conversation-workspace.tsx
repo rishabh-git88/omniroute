@@ -20,6 +20,7 @@ import {
 } from './conversation-command';
 import { API_V1_URL } from './api-url';
 import { useAuth } from './auth-provider';
+import { PRODUCT_NAME } from './brand';
 import { fileStatusMessage, productErrorMessage } from './product-error';
 import {
   acceptsStreamEvent,
@@ -845,7 +846,7 @@ export function ConversationWorkspace({
             href="/"
             onClick={() => setMobileSidebarOpen(false)}
           >
-            <span className="brand-mark">O</span> OmniRoute
+            <span className="brand-mark">O</span> {PRODUCT_NAME}
           </Link>
           <button
             className="mobile-close"
@@ -1298,7 +1299,7 @@ export function ConversationWorkspace({
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
-              placeholder="Message OmniRoute…"
+              placeholder={`Message ${PRODUCT_NAME}…`}
               value={content}
             />
             <div className="composer-footer">
@@ -1355,7 +1356,7 @@ export function ConversationWorkspace({
             </div>
           </form>
           <p className="composer-note">
-            OmniRoute may use your selected conversation context to answer.
+            {PRODUCT_NAME} may use your selected conversation context to answer.
             Press Enter to send.
           </p>
         </div>

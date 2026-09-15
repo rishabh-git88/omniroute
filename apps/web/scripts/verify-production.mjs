@@ -66,7 +66,7 @@ try {
   assert.equal(landing.status, 200);
   const landingHtml = await landing.text();
   assert(landingHtml.includes('Choose the answer, not the provider.'));
-  assert(!landingHtml.includes('Loading OmniRoute'));
+  assert(!landingHtml.includes('Loading OneRoute-AI'));
   assert.match(landingHtml, /rel="icon"[^>]+icon\.svg/);
   const login = await fetch(`${webOrigin}/login`);
   assert.equal(login.status, 200);

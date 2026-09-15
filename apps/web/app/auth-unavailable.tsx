@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useAuth } from './auth-provider';
+import { PRODUCT_NAME } from './brand';
 
 export function AuthUnavailable() {
   const auth = useAuth();
@@ -10,8 +11,8 @@ export function AuthUnavailable() {
   return (
     <div className="auth-unavailable" role="alert">
       <p>
-        We can’t reach OmniRoute to check your session. You have not been signed
-        out.
+        We can’t reach {PRODUCT_NAME} to check your session. You have not been
+        signed out.
       </p>
       <button
         type="button"

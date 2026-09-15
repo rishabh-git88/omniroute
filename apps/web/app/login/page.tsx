@@ -2,6 +2,7 @@ import Link from 'next/link';
 
 import { API_V1_URL } from '../api-url';
 import { AuthUnavailable } from '../auth-unavailable';
+import { PRODUCT_NAME } from '../brand';
 
 export default async function LoginPage({
   searchParams,
@@ -17,7 +18,7 @@ export default async function LoginPage({
       <section className="login-card" aria-labelledby="login-title">
         <Link className="brand" href="/">
           <span className="brand-mark">O</span>
-          OmniRoute
+          {PRODUCT_NAME}
         </Link>
         <p className="eyebrow">Your models. One memory.</p>
         <h1 id="login-title">Sign in to your workspace</h1>
@@ -53,8 +54,8 @@ export default async function LoginPage({
           Continue with Google
         </a>
         <p className="privacy-note">
-          OmniRoute stores your account identity and a hashed session—not your
-          Google access token.
+          {PRODUCT_NAME} stores your account identity and a hashed session—not
+          your Google access token.
         </p>
       </section>
     </main>
